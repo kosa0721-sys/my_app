@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#1a1a1a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ゴルフスコア" />
+    <meta name="description" content="シンプルな18ホール・ゴルフスコア記録アプリ" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="stylesheet" href="style.css" />
+    <title>ゴルフスコア帳</title>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <button
+          type="button"
+          class="icon-btn"
+          id="btn-back"
+          hidden
+          aria-label="戻る"
+        >
+          ←
+        </button>
+        <h1 id="topbar-title">ゴルフスコア帳</h1>
+      </header>
+
+      <!-- HOME -->
+      <section class="view active" id="view-home" aria-label="ホーム">
+        <div class="hero">
+          <div class="hero-label">直近の合計スコア</div>
+          <div class="hero-score" id="latest-score">—</div>
+          <div class="hero-sub" id="latest-meta">まだラウンドがありません</div>
+        </div>
+
+        <button type="button" class="btn btn-primary" id="btn-new">
+          ＋ 新しいラウンドを始める
+        </button>
+        <button type="button" class="btn btn-secondary" id="btn-export-all" hidden>
+          全履歴を .md で書き出す
+        </button>
+
+        <h2 class="section-title">過去のラウンド</h2>
+        <div class="empty" id="empty-state">
+          <strong>記録がありません</strong>
+          18ホールのスコアをシンプルに残せます。まずは新しいラウンドを始めましょう。
+        </div>
+        <ul class="round-list" id="round-list"></ul>
+      </section>
+
+      <!-- EDIT -->
+      <section class="view" id="view-edit" aria-label="スコア入力">
+        <div class="score-summary" aria-live="polite">
+          <div class="stat">
+            <div class="stat-label">合計</div>
+            <div class="stat-value" id="sum-total">72</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">PAR計</div>
+            <div class="stat-value" id="sum-par">72</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">差</div>
+            <div class="stat-value" id="sum-diff">±0</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">OUT</div>
+            <div class="stat-value" id="sum-out">36</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">IN</div>
+            <div class="stat-value" id="sum-in">36</div>
+          </div>
+        </div>
+
+        <div class="form-card">
+          <div class="field">
+            <label for="edit-date">ラウンド日</label>
+            <input type="date" id="edit-date" />
+          </div>
+          <div class="field">
+            <label for="edit-memo">メモ（任意）</label>
+            <textarea
+              id="edit-memo"
+              placeholder="コース名や天気など"
+              maxlength="200"
+            ></textarea>
+          </div>
+        </div>
+
+        <h2 class="section-title">各ホール（PARと打数）</h2>
+        <div class="hole-grid" id="hole-grid"></div>
+
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="btn-save">
+            保存する
+          </button>
+          <button
+            type="button"
+            class="btn btn-danger"
+            id="btn-delete-edit"
+            hidden
+          >
+            このラウンドを削除
+          </button>
+        </div>
+      </section>
+
+      <!-- DETAIL -->
+      <section class="view" id="view-detail" aria-label="ラウンド詳細">
+        <div class="hero">
+          <div class="hero-label" id="detail-date">—</div>
+          <div class="hero-score" id="detail-total">—</div>
+          <div class="hero-sub" id="detail-memo">メモなし</div>
+        </div>
+
+        <div class="out-in out-in-4">
+          <div class="stat">
+            <div class="stat-label">OUT</div>
+            <div class="stat-value" id="detail-out">—</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">IN</div>
+            <div class="stat-value" id="detail-in">—</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">PAR計</div>
+            <div class="stat-value" id="detail-par">—</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">差</div>
+            <div class="stat-value" id="detail-diff">—</div>
+          </div>
+        </div>
+
+        <h2 class="section-title">ホール別スコア</h2>
+        <div class="detail-holes" id="detail-holes"></div>
+
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="btn-edit">
+            編集する
+          </button>
+          <button type="button" class="btn btn-secondary" id="btn-export-one">
+            このラウンドを .md で書き出す
+          </button>
+          <button type="button" class="btn btn-danger" id="btn-delete-detail">
+            削除する
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <div
+      class="confirm-overlay"
+      id="confirm-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-title"
+    >
+      <div class="confirm-sheet">
+        <h2 id="confirm-title">確認</h2>
+        <p id="confirm-message">よろしいですか？</p>
+        <div class="confirm-actions">
+          <button type="button" class="btn btn-secondary" id="confirm-cancel">
+            キャンセル
+          </button>
+          <button type="button" class="btn btn-danger" id="confirm-ok">
+            削除する
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./sw.js").catch((err) => {
+            console.warn("SW registration failed:", err);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
