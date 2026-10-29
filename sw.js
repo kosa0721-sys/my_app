@@ -1,12 +1,12 @@
 /* Minimal service worker for PWA installability.
-   Cache version bumped so installed PWAs drop the old shell and pick up
-   unentered holes / resume-in-progress. */
-const CACHE_NAME = "golf-score-v2";
+   Cache version bumped so installed PWAs pick up course search. */
+const CACHE_NAME = "golf-score-v3";
 const ASSETS = [
   "./",
   "./index.html",
   "./style.css",
   "./app.js",
+  "./course.js",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

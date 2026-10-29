@@ -100,13 +100,44 @@
             <label for="edit-memo">メモ（任意）</label>
             <textarea
               id="edit-memo"
-              placeholder="コース名や天気など"
+              placeholder="天気など"
               maxlength="200"
             ></textarea>
           </div>
         </div>
 
-        <h2 class="section-title">各ホール（PARと打数）</h2>
+        <div class="course-tabs" role="tablist" aria-label="コースの入れ方">
+          <button type="button" class="course-tab" id="tab-manual" role="tab" aria-selected="true">
+            手入力
+          </button>
+          <button type="button" class="course-tab" id="tab-course" role="tab" aria-selected="false">
+            コース選択
+          </button>
+        </div>
+        <p class="course-banner" id="course-name-banner" hidden></p>
+        <div class="course-panel" id="course-panel" hidden>
+          <div class="field">
+            <label for="course-query">コース名</label>
+            <input
+              id="course-query"
+              type="search"
+              placeholder="例: 川奈、御殿場"
+              autocomplete="off"
+              enterkeyhint="search"
+            />
+          </div>
+          <p class="course-status" id="course-status"></p>
+          <div id="course-results"></div>
+          <div id="course-picker" hidden></div>
+          <div id="course-chosen" hidden></div>
+          <p class="course-credit">
+            スコアカードは
+            <a href="https://www.golfcore.org/" target="_blank" rel="noopener noreferrer">GolfCore</a>
+            の公開データ（OpenStreetMap 由来）です。見つからない場合は手入力になります。
+          </p>
+        </div>
+
+        <h2 class="section-title" id="hole-section-title">各ホール（PARと打数）</h2>
         <div class="hole-grid" id="hole-grid"></div>
 
         <div class="actions">
@@ -139,6 +170,7 @@
           </div>
           <div class="hero-score" id="detail-total">—</div>
           <div class="hero-sub" id="detail-progress"></div>
+          <div class="hero-sub" id="detail-course" hidden></div>
           <div class="hero-sub" id="detail-memo">メモなし</div>
         </div>
 
@@ -201,6 +233,7 @@
       </div>
     </div>
 
+    <script src="course.js"></script>
     <script src="app.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
