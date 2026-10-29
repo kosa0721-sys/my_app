@@ -19,6 +19,14 @@
    *   pars: number[],
    *   status: RoundStatus,
    *   manualComplete: boolean,
+   *   courseName: string,
+   *   courseSource: ""|"golfcore"|"name-only",
+   *   courseSlug: string,
+   *   courseUrl: string,
+   *   courseAreas: string[],
+   *   courseTee: string,
+   *   distances: (number|null)[],
+   *   courseHoles: boolean[],
    *   createdAt: string,
    *   updatedAt: string
    * }} Round
@@ -44,6 +52,16 @@
     btnExportOne: document.getElementById("btn-export-one"),
     editDate: document.getElementById("edit-date"),
     editMemo: document.getElementById("edit-memo"),
+    tabManual: document.getElementById("tab-manual"),
+    tabCourse: document.getElementById("tab-course"),
+    courseBanner: document.getElementById("course-name-banner"),
+    coursePanel: document.getElementById("course-panel"),
+    courseQuery: document.getElementById("course-query"),
+    courseStatus: document.getElementById("course-status"),
+    courseResults: document.getElementById("course-results"),
+    coursePicker: document.getElementById("course-picker"),
+    courseChosen: document.getElementById("course-chosen"),
+    holeSectionTitle: document.getElementById("hole-section-title"),
     editStatus: document.getElementById("edit-status"),
     editProgressText: document.getElementById("edit-progress-text"),
     saveHint: document.getElementById("save-hint"),
@@ -60,6 +78,7 @@
     detailDate: document.getElementById("detail-date"),
     detailStatus: document.getElementById("detail-status"),
     detailProgress: document.getElementById("detail-progress"),
+    detailCourse: document.getElementById("detail-course"),
     detailMemo: document.getElementById("detail-memo"),
     detailTotal: document.getElementById("detail-total"),
     detailOut: document.getElementById("detail-out"),
@@ -95,6 +114,12 @@
   let highlightHole = -1;
   let toastTimer = null;
   let confirmResolver = null;
+  let courseSearchSeq = 0;
+  let courseSearchTimer = null;
+  /** @type {ReturnType<typeof GolfCourses.classifyCourse> | null} */
+  let pendingCourse = null;
+  /** @type {string[]} */
+  let areaPick = [];
 
   function uid() {
     return `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -214,6 +239,16 @@
       manualComplete = false;
     }
 
+    const distances = Array.from({ length: HOLE_COUNT }, (_, i) => {
+      if (!Array.isArray(r.distances)) return null;
+      const n = Number(r.distances[i]);
+      return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+    });
+    const courseHoles = Array.from({ length: HOLE_COUNT }, (_, i) => {
+      return Array.isArray(r.courseHoles) ? r.courseHoles[i] === true : false;
+    });
+    const source = r.courseSource === "golfcore" || r.courseSource === "name-only" ? r.courseSource : "";
+
     return {
       id: String(r.id || uid()),
       date: String(r.date || ""),
@@ -222,6 +257,14 @@
       pars,
       status,
       manualComplete,
+      courseName: String(r.courseName || ""),
+      courseSource: source,
+      courseSlug: String(r.courseSlug || ""),
+      courseUrl: String(r.courseUrl || ""),
+      courseAreas: Array.isArray(r.courseAreas) ? r.courseAreas.map((name) => String(name)).slice(0, 2) : [],
+      courseTee: String(r.courseTee || ""),
+      distances,
+      courseHoles,
       createdAt: String(r.createdAt || new Date().toISOString()),
       updatedAt: String(r.updatedAt || r.createdAt || new Date().toISOString()),
     };
@@ -257,6 +300,14 @@
       pars: r.pars.slice(),
       status: r.status,
       manualComplete: !!r.manualComplete,
+      courseName: r.courseName || "",
+      courseSource: r.courseSource || "",
+      courseSlug: r.courseSlug || "",
+      courseUrl: r.courseUrl || "",
+      courseAreas: (r.courseAreas || []).slice(),
+      courseTee: r.courseTee || "",
+      distances: (r.distances || Array.from({ length: HOLE_COUNT }, () => null)).slice(),
+      courseHoles: (r.courseHoles || Array.from({ length: HOLE_COUNT }, () => false)).slice(),
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     };
@@ -323,9 +374,52 @@
       pars: Array.from({ length: HOLE_COUNT }, () => DEFAULT_PAR),
       status: "in_progress",
       manualComplete: false,
+      courseName: "",
+      courseSource: "",
+      courseSlug: "",
+      courseUrl: "",
+      courseAreas: [],
+      courseTee: "",
+      distances: Array.from({ length: HOLE_COUNT }, () => null),
+      courseHoles: Array.from({ length: HOLE_COUNT }, () => false),
       createdAt: now,
       updatedAt: now,
     };
+  }
+
+  function emptyCourseFields() {
+    return {
+      courseName: "",
+      courseSource: "",
+      courseSlug: "",
+      courseUrl: "",
+      courseAreas: [],
+      courseTee: "",
+      distances: Array.from({ length: HOLE_COUNT }, () => null),
+      courseHoles: Array.from({ length: HOLE_COUNT }, () => false),
+    };
+  }
+
+  function yardText(yards) {
+    return yards != null ? `${yards} yd` : "";
+  }
+
+  function holeMetaText(par, score, yards) {
+    const yard = yardText(yards);
+    if (score == null) {
+      return yard ? `PAR${par} · ${yard}` : `PAR${par} · 打数を選択`;
+    }
+    const diff = formatDiff(score - par);
+    return yard ? `PAR${par} · ${yard} · ${diff}` : `PAR${par} · ${diff}`;
+  }
+
+  function courseSummary(round) {
+    if (!round || !round.courseName) return "";
+    const bits = [round.courseName];
+    if (round.courseAreas && round.courseAreas.length) bits.push(round.courseAreas.join(" / "));
+    if (round.courseTee) bits.push(round.courseTee);
+    if (round.courseSource === "name-only") bits.push("ホールデータなし");
+    return bits.join(" · ");
   }
 
   function escapeHtml(s) {
@@ -410,7 +504,7 @@
             <span>${escapeHtml(formatDateJP(r.date))}</span>
             <span class="status-badge ${badgeClass}">${statusLabel(r.status)}</span>
           </div>
-          <div class="round-item-meta">${escapeHtml(memo || "メモなし")} · ${n}/18 · OUT ${outText} / IN ${inText} · ${diff}</div>
+          <div class="round-item-meta">${escapeHtml([r.courseName, memo].filter(Boolean).join(" · ") || "メモなし")} · ${n}/18 · OUT ${outText} / IN ${inText} · ${diff}</div>
         </div>
         <div class="round-item-score">${n ? figsR.total.sum : "—"}</div>
       `;
@@ -485,9 +579,10 @@
         return `<button type="button" class="chip chip-stroke${selected ? " selected" : ""}" data-stroke="${s}" aria-pressed="${selected}">${s}</button>`;
       }).join("");
 
+      const yards = editing.distances[i];
       const scoreHtml = entered
-        ? `<span class="hole-result-score">${score}</span><span class="hole-result-meta">PAR${par} · ${formatDiff(score - par)}</span>`
-        : `<span class="hole-result-score is-empty">未入力</span><span class="hole-result-meta">PAR${par} · 打数を選択</span>`;
+        ? `<span class="hole-result-score">${score}</span><span class="hole-result-meta">${holeMetaText(par, score, yards)}</span>`
+        : `<span class="hole-result-score is-empty">未入力</span><span class="hole-result-meta">${holeMetaText(par, null, yards)}</span>`;
 
       const nextTag = isNext ? `<span class="hole-next-tag">続きはここから</span>` : "";
 
@@ -589,15 +684,16 @@
     const scoreEl = card.querySelector(".hole-result-score");
     const metaEl = card.querySelector(".hole-result-meta");
     if (!scoreEl || !metaEl) return;
+    const yards = editing.distances[i];
     if (score == null) {
       scoreEl.textContent = "未入力";
       scoreEl.classList.add("is-empty");
-      metaEl.textContent = `PAR${par} · 打数を選択`;
+      metaEl.textContent = holeMetaText(par, null, yards);
       card.classList.add("is-empty");
     } else {
       scoreEl.textContent = String(score);
       scoreEl.classList.remove("is-empty");
-      metaEl.textContent = `PAR${par} · ${formatDiff(score - par)}`;
+      metaEl.textContent = holeMetaText(par, score, yards);
       card.classList.remove("is-empty");
     }
   }
@@ -642,6 +738,9 @@
     if (editing.pars.some((p) => p !== DEFAULT_PAR)) return false;
     if ((editing.date || "") !== editingInitialDate) return false;
     if (editing.manualComplete) return false;
+    if ((editing.courseName || "").trim()) return false;
+    if (editing.courseSource) return false;
+    if ((editing.courseHoles || []).some(Boolean)) return false;
     return true;
   }
 
@@ -717,6 +816,7 @@
     renderHoleGrid();
     updateEditSummary();
     updateEditChrome();
+    renderCourseChrome();
   }
 
   function openEdit(id, opts = {}) {
@@ -742,6 +842,8 @@
     renderHoleGrid();
     updateEditSummary();
     updateEditChrome();
+    renderCourseChrome();
+    restoreCourseTees();
     if (highlightHole >= 0) focusHoleCard(highlightHole);
   }
 
@@ -774,6 +876,11 @@
     if (els.detailProgress) {
       els.detailProgress.textContent = `入力 ${n}/${HOLE_COUNT}ホール`;
     }
+    if (els.detailCourse) {
+      const courseLine = courseSummary(found);
+      els.detailCourse.hidden = !courseLine;
+      els.detailCourse.textContent = courseLine;
+    }
     const memo = (found.memo || "").trim();
     els.detailMemo.textContent = memo || "メモなし";
     els.detailMemo.style.opacity = memo ? "1" : "0.7";
@@ -790,12 +897,20 @@
       const cell = document.createElement("div");
       const entered = isEntered(s);
       cell.className = `detail-hole${entered ? "" : " is-empty"}`;
+      const yards = found.distances[i];
+      const yardBit = yards != null ? ` · ${yards}yd` : "";
       if (entered) {
         const p = found.pars[i];
         cell.innerHTML = `
-          <div class="n">${i + 1}H · PAR${p}</div>
+          <div class="n">${i + 1}H · PAR${p}${yardBit}</div>
           <div class="s">${s}</div>
           <div class="d">${formatDiff(s - p)}</div>
+        `;
+      } else if (found.courseHoles[i]) {
+        cell.innerHTML = `
+          <div class="n">${i + 1}H · PAR${found.pars[i]}${yardBit}</div>
+          <div class="s">—</div>
+          <div class="d">未入力</div>
         `;
       } else {
         cell.innerHTML = `
@@ -850,6 +965,16 @@
     lines.push(`- 日付: ${r.date || "（未設定）"}`);
     lines.push(`- 状態: ${statusLabel(r.status)}`);
     lines.push(`- 入力ホール: **${entered}/${HOLE_COUNT}**`);
+    if (r.courseName) {
+      const sourceNote = r.courseSource === "name-only" ? "（ホールデータなし・PARは手入力）" : "";
+      lines.push(`- コース: ${r.courseName}${sourceNote}`);
+      if (r.courseAreas && r.courseAreas.length) lines.push(`- エリア: ${r.courseAreas.join(" / ")}`);
+      if (r.courseTee) lines.push(`- ティー: ${r.courseTee}`);
+      const yardTotal = (r.distances || []).reduce((sum, yards) => (yards != null ? sum + yards : sum), 0);
+      const yardCount = (r.distances || []).filter((yards) => yards != null).length;
+      if (yardCount) lines.push(`- ヤーデージ: **${yardTotal}** yd（コースデータ ${yardCount}ホール分）`);
+      if (r.courseUrl) lines.push(`- コース情報: ${r.courseUrl}`);
+    }
     lines.push(`- メモ: ${memo}`);
     lines.push(`- 合計打数: **${total.score}**`);
     lines.push(`- PAR計: **${total.par}**（入力済みホールのPARのみ）`);
@@ -864,16 +989,21 @@
     lines.push("");
     lines.push("### ホール別スコア");
     lines.push("");
-    lines.push("| ホール | サイド | PAR | 打数 | 差 |");
-    lines.push("| ---: | :--- | ---: | ---: | ---: |");
+    lines.push("| ホール | サイド | PAR | ヤード | 打数 | 差 |");
+    lines.push("| ---: | :--- | ---: | ---: | ---: | ---: |");
     for (let i = 0; i < HOLE_COUNT; i++) {
       const side = i < 9 ? "OUT" : "IN";
+      const yards = r.distances && r.distances[i] != null ? String(r.distances[i]) : "-";
       if (!isEntered(r.scores[i])) {
-        lines.push(`| ${i + 1} | ${side} | - | - | - |`);
+        if (r.courseHoles && r.courseHoles[i]) {
+          lines.push(`| ${i + 1} | ${side} | ${r.pars[i]} | ${yards} | - | - |`);
+        } else {
+          lines.push(`| ${i + 1} | ${side} | - | - | - | - |`);
+        }
       } else {
         const par = r.pars[i];
         const score = r.scores[i];
-        lines.push(`| ${i + 1} | ${side} | ${par} | ${score} | ${formatDiff(score - par)} |`);
+        lines.push(`| ${i + 1} | ${side} | ${par} | ${yards} | ${score} | ${formatDiff(score - par)} |`);
       }
     }
     lines.push("");
@@ -897,15 +1027,16 @@
     lines.push("");
     lines.push("## 一覧");
     lines.push("");
-    lines.push("| # | 日付 | 状態 | 入力 | 合計 | PAR計 | 差 | OUT | IN | メモ |");
-    lines.push("| ---: | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- |");
+    lines.push("| # | 日付 | 状態 | コース | 入力 | 合計 | PAR計 | 差 | OUT | IN | メモ |");
+    lines.push("| ---: | :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- |");
     sorted.forEach((r, idx) => {
       const total = mdAggregate(r.scores, r.pars, 0, HOLE_COUNT);
       const out = mdAggregate(r.scores, r.pars, 0, 9);
       const inn = mdAggregate(r.scores, r.pars, 9, 18);
       const memo = escapeMdCell((r.memo || "").trim() || "—");
+      const course = escapeMdCell(r.courseName || "—");
       lines.push(
-        `| ${idx + 1} | ${r.date || "—"} | ${statusLabel(r.status)} | ${countEntered(r.scores)}/${HOLE_COUNT} | ${total.score} | ${total.par} | ${total.diff} | ${out.score} | ${inn.score} | ${memo} |`
+        `| ${idx + 1} | ${r.date || "—"} | ${statusLabel(r.status)} | ${course} | ${countEntered(r.scores)}/${HOLE_COUNT} | ${total.score} | ${total.par} | ${total.diff} | ${out.score} | ${inn.score} | ${memo} |`
       );
     });
     lines.push("");
@@ -1025,6 +1156,421 @@
     }
   }
 
+  function activateCourseTab(which) {
+    const course = which === "course";
+    if (els.tabManual) els.tabManual.setAttribute("aria-selected", course ? "false" : "true");
+    if (els.tabCourse) els.tabCourse.setAttribute("aria-selected", course ? "true" : "false");
+    if (els.coursePanel) els.coursePanel.hidden = !course;
+  }
+
+  function renderNameBanner() {
+    if (!els.courseBanner) return;
+    if (editing && editing.courseSource === "name-only" && editing.courseName) {
+      els.courseBanner.hidden = false;
+      els.courseBanner.textContent = `コース名「${editing.courseName}」だけ残しています。PARは手入力してください。`;
+    } else {
+      els.courseBanner.hidden = true;
+      els.courseBanner.textContent = "";
+    }
+  }
+
+  function renderChosen() {
+    if (!els.courseChosen || !editing) return;
+    if (editing.courseSource !== "golfcore" || !editing.courseName) {
+      els.courseChosen.hidden = true;
+      els.courseChosen.innerHTML = "";
+      return;
+    }
+    const areas = editing.courseAreas.length ? escapeHtml(editing.courseAreas.join(" / ")) : "";
+    const tee = editing.courseTee ? escapeHtml(editing.courseTee) : "";
+    els.courseChosen.hidden = false;
+    els.courseChosen.innerHTML = `
+      <div class="chosen-card">
+        <strong>${escapeHtml(editing.courseName)}</strong>
+        <div class="chosen-meta">${[areas, tee].filter(Boolean).join(" · ") || "スコアカードを反映しました"}</div>
+      </div>
+      <button type="button" class="btn btn-secondary" id="btn-course-clear">選び直す</button>
+    `;
+    const clearBtn = document.getElementById("btn-course-clear");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        dropCourseLink({ toast: false });
+        activateCourseTab("course");
+        showToast("コース情報を外しました。PARは手入力のままです");
+        if (els.courseQuery) els.courseQuery.focus();
+      });
+    }
+  }
+
+  function renderCourseChrome() {
+    courseSearchSeq += 1;
+    pendingCourse = null;
+    areaPick = [];
+    if (els.courseQuery) els.courseQuery.value = "";
+    if (els.courseStatus) els.courseStatus.textContent = "";
+    if (els.courseResults) els.courseResults.innerHTML = "";
+    if (els.coursePicker) {
+      els.coursePicker.hidden = true;
+      els.coursePicker.innerHTML = "";
+    }
+    const linked = editing && editing.courseSource === "golfcore";
+    activateCourseTab(linked ? "course" : "manual");
+    renderChosen();
+    renderNameBanner();
+    if (els.holeSectionTitle) {
+      els.holeSectionTitle.textContent = linked ? "各ホール（PAR・ヤード・打数）" : "各ホール（PARと打数）";
+    }
+  }
+
+  function dropCourseLink({ toast = true } = {}) {
+    if (!editing) return;
+    const pars = editing.pars.slice();
+    const scores = editing.scores.slice();
+    Object.assign(editing, emptyCourseFields());
+    editing.pars = pars;
+    editing.scores = scores;
+    pendingCourse = null;
+    areaPick = [];
+    if (els.coursePicker) {
+      els.coursePicker.hidden = true;
+      els.coursePicker.innerHTML = "";
+    }
+    if (els.courseResults) els.courseResults.innerHTML = "";
+    if (els.courseStatus) els.courseStatus.textContent = "";
+    commitEditing();
+    renderHoleGrid();
+    renderChosen();
+    renderNameBanner();
+    if (els.holeSectionTitle) els.holeSectionTitle.textContent = "各ホール（PARと打数）";
+    if (toast) showToast("コース情報を外しました。PARは手入力のままです");
+  }
+
+  function useNameOnly(name) {
+    if (!editing) return;
+    const pars = editing.pars.slice();
+    const scores = editing.scores.slice();
+    Object.assign(editing, emptyCourseFields());
+    editing.pars = pars;
+    editing.scores = scores;
+    editing.courseName = String(name || "").trim();
+    editing.courseSource = editing.courseName ? "name-only" : "";
+    pendingCourse = null;
+    areaPick = [];
+    commitEditing({ force: !!editing.courseName });
+    activateCourseTab("manual");
+    renderHoleGrid();
+    renderChosen();
+    renderNameBanner();
+    if (els.coursePicker) els.coursePicker.hidden = true;
+    if (els.holeSectionTitle) els.holeSectionTitle.textContent = "各ホール（PARと打数）";
+    showToast("ホールデータがないため、PARは手入力です");
+  }
+
+  function courseErrorMessage(err) {
+    const status = err && err.status;
+    if (status === 401 || status === 403) {
+      return "コース検索にはAPIキーが必要になりました。この静的アプリには秘密鍵を置けないので、手入力にしてください。";
+    }
+    if (status === 429) return "検索が混み合っています。少し待ってからもう一度どうぞ。";
+    return "コース検索に接続できませんでした。通信できるときは再検索し、なければ手入力にしてください。";
+  }
+
+  function renderNameOnlyAction(name) {
+    if (!els.courseResults || !name) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-secondary";
+    btn.textContent = "この名前で手入力";
+    btn.addEventListener("click", () => useNameOnly(name));
+    els.courseResults.appendChild(btn);
+  }
+
+  function applyCourseCard(classified, card) {
+    if (!editing || !card) return;
+    const scores = editing.scores.slice();
+    Object.assign(editing, emptyCourseFields());
+    editing.scores = scores;
+    editing.pars = Array.from({ length: HOLE_COUNT }, () => DEFAULT_PAR);
+    editing.courseName = classified.name;
+    editing.courseSource = "golfcore";
+    editing.courseSlug = classified.slug;
+    editing.courseUrl = classified.url || "";
+    editing.courseAreas = card.areas.slice();
+    editing.courseTee = card.tee || "";
+    card.holes.forEach((hole, index) => {
+      if (!hole || index >= HOLE_COUNT) return;
+      editing.pars[index] = hole.par;
+      editing.distances[index] = hole.yards;
+      editing.courseHoles[index] = true;
+    });
+    pendingCourse = classified;
+    commitEditing({ force: true });
+    activateCourseTab("course");
+    renderChosen();
+    renderNameBanner();
+    if (els.holeSectionTitle) els.holeSectionTitle.textContent = "各ホール（PAR・ヤード・打数）";
+    renderHoleGrid();
+  }
+
+  function renderTeeChoices(layout, selectedId) {
+    if (!els.coursePicker || !layout || layout.tees.length < 2) return;
+    els.coursePicker.hidden = false;
+    els.coursePicker.innerHTML = "";
+    const label = document.createElement("p");
+    label.className = "course-status";
+    label.textContent = "ティー（ヤードが変わります。打数はそのままです）";
+    const row = document.createElement("div");
+    row.className = "tee-row";
+    layout.tees.forEach((tee) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `tee-choice${tee.id === selectedId ? " selected" : ""}`;
+      btn.textContent = tee.id;
+      btn.addEventListener("click", () => {
+        if (!pendingCourse) return;
+        const card = GolfCourses.cardFromSelection(pendingCourse, {
+          mode: "18",
+          key: layout.key,
+          teeId: tee.id,
+        });
+        applyCourseCard(pendingCourse, card);
+        renderTeeChoices(layout, tee.id);
+      });
+      row.appendChild(btn);
+    });
+    els.coursePicker.appendChild(label);
+    els.coursePicker.appendChild(row);
+  }
+
+  function paintNineSelection() {
+    if (!els.coursePicker) return;
+    els.coursePicker.querySelectorAll(".area-choice").forEach((btn) => {
+      const order = areaPick.indexOf(btn.dataset.key);
+      btn.classList.toggle("selected", order >= 0);
+      const badge = btn.querySelector(".area-badge");
+      if (!badge) return;
+      if (order === 0) {
+        badge.hidden = false;
+        badge.textContent = "前半";
+      } else if (order === 1) {
+        badge.hidden = false;
+        badge.textContent = "後半";
+      } else {
+        badge.hidden = true;
+        badge.textContent = "";
+      }
+    });
+    const go = document.getElementById("btn-apply-nines");
+    if (go) go.disabled = areaPick.length !== 2;
+  }
+
+  function areaButton(layout, kind) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "area-choice";
+    btn.dataset.key = layout.key;
+    const yards = layout.holes.reduce((sum, hole) => sum + (hole.yards || 0), 0);
+    const par = layout.holes.reduce((sum, hole) => sum + hole.par, 0);
+    const yardKnown = layout.holes.some((hole) => hole.yards != null);
+    btn.innerHTML = `
+      <div class="area-choice-name">${escapeHtml(layout.name)} <span class="area-badge" hidden></span></div>
+      <div class="area-choice-meta">${layout.kind === "9" ? "9H" : "18H"} · PAR ${par}${yardKnown ? ` · ${yards} yd` : ""}</div>
+    `;
+    btn.addEventListener("click", () => {
+      if (!pendingCourse) return;
+      if (kind === "18") {
+        const card = GolfCourses.cardFromSelection(pendingCourse, {
+          mode: "18",
+          key: layout.key,
+          teeId: layout.defaultTeeId,
+        });
+        applyCourseCard(pendingCourse, card);
+        renderTeeChoices(layout, card.tee);
+        els.courseStatus.textContent = "この組み合わせのPARとヤードを入れました。打数は未入力のままです。";
+        return;
+      }
+      const index = areaPick.indexOf(layout.key);
+      if (index >= 0) areaPick.splice(index, 1);
+      else if (areaPick.length < 2) areaPick.push(layout.key);
+      else areaPick[1] = layout.key;
+      paintNineSelection();
+    });
+    return btn;
+  }
+
+  function renderAreaPicker(classified) {
+    if (!els.coursePicker) return;
+    const fulls = classified.layouts.filter((layout) => layout.kind === "18");
+    const nines = classified.layouts.filter((layout) => layout.kind === "9");
+    els.coursePicker.hidden = false;
+    els.coursePicker.innerHTML = "";
+    const intro = document.createElement("p");
+    intro.className = "course-status";
+    intro.textContent = nines.length >= 2
+      ? "前半と後半にする9ホールを、この順で2つ選んでください。"
+      : "プレーする18ホールの組み合わせを選んでください。";
+    els.coursePicker.appendChild(intro);
+    if (fulls.length) {
+      const label = document.createElement("p");
+      label.className = "course-status";
+      label.textContent = "18ホールの組み合わせ";
+      const list = document.createElement("div");
+      list.className = "area-list";
+      fulls.forEach((layout) => list.appendChild(areaButton(layout, "18")));
+      els.coursePicker.appendChild(label);
+      els.coursePicker.appendChild(list);
+    }
+    if (nines.length >= 2) {
+      const label = document.createElement("p");
+      label.className = "course-status";
+      label.textContent = "9ホール";
+      const list = document.createElement("div");
+      list.className = "area-list";
+      nines.forEach((layout) => list.appendChild(areaButton(layout, "9")));
+      els.coursePicker.appendChild(label);
+      els.coursePicker.appendChild(list);
+      const go = document.createElement("button");
+      go.type = "button";
+      go.className = "btn btn-primary";
+      go.id = "btn-apply-nines";
+      go.textContent = "この組み合わせで入力";
+      go.disabled = true;
+      go.addEventListener("click", () => {
+        const card = GolfCourses.cardFromSelection(classified, {
+          mode: "9",
+          frontKey: areaPick[0],
+          backKey: areaPick[1],
+        });
+        if (!card) return;
+        applyCourseCard(classified, card);
+        if (els.coursePicker) els.coursePicker.hidden = true;
+        els.courseStatus.textContent = "選んだ2つの9ホールを前半・後半に入れました。打数は未入力のままです。";
+      });
+      els.coursePicker.appendChild(go);
+    }
+    els.courseStatus.textContent = "";
+  }
+
+  function renderSearchResults(query, result) {
+    const courses = result.courses || [];
+    els.courseResults.innerHTML = "";
+    if (!courses.length) {
+      els.courseStatus.textContent = `「${query}」は見つかりませんでした。`;
+      renderNameOnlyAction(query);
+      return;
+    }
+    els.courseStatus.textContent = courses.length === result.total
+      ? `${courses.length}件`
+      : `${result.total}件中 ${courses.length}件`;
+    const list = document.createElement("div");
+    list.className = "course-results";
+    courses.forEach((course) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "course-hit";
+      const holes = course.holeCount ? `${course.holeCount}H` : "ホール数不明";
+      const card = course.scorecard ? "スコアカードあり" : "ホールデータなしの可能性";
+      btn.innerHTML = `
+        <div class="course-hit-name">${escapeHtml(course.name)}</div>
+        <div class="course-hit-meta">${escapeHtml([course.city, holes, card].filter(Boolean).join(" · "))}</div>
+      `;
+      btn.addEventListener("click", () => selectCourse(course));
+      list.appendChild(btn);
+    });
+    els.courseResults.appendChild(list);
+  }
+
+  async function selectCourse(hit) {
+    const seq = ++courseSearchSeq;
+    els.courseStatus.textContent = "ホールデータを取得しています…";
+    if (els.coursePicker) {
+      els.coursePicker.hidden = true;
+      els.coursePicker.innerHTML = "";
+    }
+    try {
+      const classified = await GolfCourses.fetchCourse(hit.slug);
+      if (seq !== courseSearchSeq || !editing) return;
+      if (!classified.name) classified.name = hit.name;
+      if (classified.kind === "none") {
+        useNameOnly(hit.name);
+        return;
+      }
+      pendingCourse = classified;
+      els.courseResults.innerHTML = "";
+      if (classified.kind === "single-18" || classified.kind === "single-9") {
+        const layout = classified.layouts[0];
+        const card = GolfCourses.cardFromSelection(
+          classified,
+          classified.kind === "single-18"
+            ? { mode: "18", key: layout.key, teeId: layout.defaultTeeId }
+            : { mode: "9", frontKey: layout.key, teeId: layout.defaultTeeId }
+        );
+        applyCourseCard(classified, card);
+        if (classified.kind === "single-18") renderTeeChoices(layout, card.tee);
+        els.courseStatus.textContent = classified.kind === "single-9"
+          ? "9ホール分だけデータがあります。後半は手入力してください。"
+          : "PARとヤードを入れました。打数は未入力のままです。";
+        return;
+      }
+      areaPick = [];
+      renderAreaPicker(classified);
+    } catch (err) {
+      if (seq !== courseSearchSeq) return;
+      els.courseStatus.textContent = courseErrorMessage(err);
+      renderNameOnlyAction(hit.name);
+    }
+  }
+
+  async function runCourseSearch() {
+    if (!editing || !els.courseQuery) return;
+    const query = els.courseQuery.value.trim();
+    const seq = ++courseSearchSeq;
+    pendingCourse = null;
+    areaPick = [];
+    if (els.coursePicker) {
+      els.coursePicker.hidden = true;
+      els.coursePicker.innerHTML = "";
+    }
+    if (query.length < 2) {
+      if (els.courseStatus) els.courseStatus.textContent = query ? "2文字以上で検索します" : "";
+      if (els.courseResults) els.courseResults.innerHTML = "";
+      return;
+    }
+    if (els.courseStatus) els.courseStatus.textContent = "検索しています…";
+    if (els.courseResults) els.courseResults.innerHTML = "";
+    try {
+      const result = await GolfCourses.searchCourses(query);
+      if (seq !== courseSearchSeq || !editing) return;
+      renderSearchResults(query, result);
+    } catch (err) {
+      if (seq !== courseSearchSeq || !editing) return;
+      if (els.courseStatus) els.courseStatus.textContent = courseErrorMessage(err);
+      if (els.courseResults) els.courseResults.innerHTML = "";
+      renderNameOnlyAction(query);
+    }
+  }
+
+  function scheduleCourseSearch() {
+    clearTimeout(courseSearchTimer);
+    courseSearchTimer = setTimeout(runCourseSearch, 450);
+  }
+
+  async function restoreCourseTees() {
+    if (!editing || editing.courseSource !== "golfcore" || !editing.courseSlug || !window.GolfCourses) return;
+    const slug = editing.courseSlug;
+    const seq = ++courseSearchSeq;
+    try {
+      const classified = await GolfCourses.fetchCourse(slug);
+      if (seq !== courseSearchSeq || !editing || editing.courseSlug !== slug) return;
+      pendingCourse = classified;
+      const layout = classified.layouts.find((item) => item.name === (editing.courseAreas || [])[0] && item.kind === "18")
+        || classified.layouts.find((item) => item.kind === "18");
+      if (layout && layout.tees.length > 1) renderTeeChoices(layout, editing.courseTee);
+    } catch {
+      /* Saved par and yardage still show without a live tee list. */
+    }
+  }
+
   els.btnNew.addEventListener("click", openNew);
   if (els.btnResume) els.btnResume.addEventListener("click", openResume);
   els.backBtn.addEventListener("click", goBack);
@@ -1066,6 +1612,27 @@
       editing.memo = els.editMemo.value;
       commitEditing();
     });
+  }
+  if (els.tabManual) {
+    els.tabManual.addEventListener("click", () => {
+      if (!editing) return;
+      if (editing.courseSource === "golfcore") dropCourseLink();
+      activateCourseTab("manual");
+    });
+  }
+  if (els.tabCourse) {
+    els.tabCourse.addEventListener("click", () => {
+      if (!editing) return;
+      activateCourseTab("course");
+      renderChosen();
+    });
+  }
+  if (els.courseQuery) {
+    els.courseQuery.addEventListener("input", (event) => {
+      if (event.isComposing) return;
+      scheduleCourseSearch();
+    });
+    els.courseQuery.addEventListener("compositionend", scheduleCourseSearch);
   }
 
   window.addEventListener("pagehide", () => {
