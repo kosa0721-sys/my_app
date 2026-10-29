@@ -40,6 +40,12 @@
           <div class="hero-sub" id="latest-meta">まだラウンドがありません</div>
         </div>
 
+        <div class="resume-block" id="resume-block" hidden>
+          <button type="button" class="btn btn-primary" id="btn-resume">
+            続きから入力
+          </button>
+          <p class="resume-note" id="resume-note"></p>
+        </div>
         <button type="button" class="btn btn-primary" id="btn-new">
           ＋ 新しいラウンドを始める
         </button>
@@ -60,24 +66,29 @@
         <div class="score-summary" aria-live="polite">
           <div class="stat">
             <div class="stat-label">合計</div>
-            <div class="stat-value" id="sum-total">72</div>
+            <div class="stat-value" id="sum-total">—</div>
           </div>
           <div class="stat">
             <div class="stat-label">PAR計</div>
-            <div class="stat-value" id="sum-par">72</div>
+            <div class="stat-value" id="sum-par">—</div>
           </div>
           <div class="stat">
             <div class="stat-label">差</div>
-            <div class="stat-value" id="sum-diff">±0</div>
+            <div class="stat-value" id="sum-diff">—</div>
           </div>
           <div class="stat">
             <div class="stat-label">OUT</div>
-            <div class="stat-value" id="sum-out">36</div>
+            <div class="stat-value" id="sum-out">—</div>
           </div>
           <div class="stat">
             <div class="stat-label">IN</div>
-            <div class="stat-value" id="sum-in">36</div>
+            <div class="stat-value" id="sum-in">—</div>
           </div>
+        </div>
+        <div class="edit-progress" id="edit-progress">
+          <span class="status-badge is-progress" id="edit-status">プレー中</span>
+          <span id="edit-progress-text">0/18ホールを集計</span>
+          <span class="save-hint" id="save-hint">入力は自動で保存されます</span>
         </div>
 
         <div class="form-card">
@@ -99,6 +110,12 @@
         <div class="hole-grid" id="hole-grid"></div>
 
         <div class="actions">
+          <button type="button" class="btn btn-secondary" id="btn-complete">
+            プレーを完了にする
+          </button>
+          <button type="button" class="btn btn-secondary" id="btn-reopen" hidden>
+            プレー中に戻す
+          </button>
           <button type="button" class="btn btn-primary" id="btn-save">
             保存する
           </button>
@@ -116,8 +133,12 @@
       <!-- DETAIL -->
       <section class="view" id="view-detail" aria-label="ラウンド詳細">
         <div class="hero">
-          <div class="hero-label" id="detail-date">—</div>
+          <div class="hero-label-row">
+            <div class="hero-label" id="detail-date">—</div>
+            <span class="status-badge" id="detail-status"></span>
+          </div>
           <div class="hero-score" id="detail-total">—</div>
+          <div class="hero-sub" id="detail-progress"></div>
           <div class="hero-sub" id="detail-memo">メモなし</div>
         </div>
 
@@ -183,6 +204,12 @@
     <script src="app.js"></script>
     <script>
       if ("serviceWorker" in navigator) {
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (refreshing) return;
+          refreshing = true;
+          window.location.reload();
+        });
         window.addEventListener("load", () => {
           navigator.serviceWorker.register("./sw.js").catch((err) => {
             console.warn("SW registration failed:", err);

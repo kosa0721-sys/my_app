@@ -10,12 +10,15 @@
   const MAX_STROKES = 99;
 
   /**
+   * @typedef {"in_progress"|"complete"} RoundStatus
    * @typedef {{
    *   id: string,
    *   date: string,
    *   memo: string,
-   *   scores: number[],
+   *   scores: (number|null)[],
    *   pars: number[],
+   *   status: RoundStatus,
+   *   manualComplete: boolean,
    *   createdAt: string,
    *   updatedAt: string
    * }} Round
@@ -34,10 +37,16 @@
     roundList: document.getElementById("round-list"),
     emptyState: document.getElementById("empty-state"),
     btnNew: document.getElementById("btn-new"),
+    btnResume: document.getElementById("btn-resume"),
+    resumeBlock: document.getElementById("resume-block"),
+    resumeNote: document.getElementById("resume-note"),
     btnExportAll: document.getElementById("btn-export-all"),
     btnExportOne: document.getElementById("btn-export-one"),
     editDate: document.getElementById("edit-date"),
     editMemo: document.getElementById("edit-memo"),
+    editStatus: document.getElementById("edit-status"),
+    editProgressText: document.getElementById("edit-progress-text"),
+    saveHint: document.getElementById("save-hint"),
     holeGrid: document.getElementById("hole-grid"),
     sumTotal: document.getElementById("sum-total"),
     sumOut: document.getElementById("sum-out"),
@@ -45,8 +54,12 @@
     sumPar: document.getElementById("sum-par"),
     sumDiff: document.getElementById("sum-diff"),
     btnSave: document.getElementById("btn-save"),
+    btnComplete: document.getElementById("btn-complete"),
+    btnReopen: document.getElementById("btn-reopen"),
     btnDeleteEdit: document.getElementById("btn-delete-edit"),
     detailDate: document.getElementById("detail-date"),
+    detailStatus: document.getElementById("detail-status"),
+    detailProgress: document.getElementById("detail-progress"),
     detailMemo: document.getElementById("detail-memo"),
     detailTotal: document.getElementById("detail-total"),
     detailOut: document.getElementById("detail-out"),
@@ -74,6 +87,12 @@
   let detailId = null;
   /** @type {boolean[]} */
   let otherOpen = [];
+  /** New round not yet written to storage. */
+  let editingIsNew = false;
+  /** Date captured when a new round was opened, for pristine detection. */
+  let editingInitialDate = "";
+  /** Hole index to highlight as the resume target, or -1. */
+  let highlightHole = -1;
   let toastTimer = null;
   let confirmResolver = null;
 
@@ -99,8 +118,9 @@
   }
 
   function clampScore(n) {
-    if (!Number.isFinite(n)) return DEFAULT_STROKES;
-    return Math.min(MAX_STROKES, Math.max(1, Math.round(n)));
+    const v = Math.round(Number(n));
+    if (!Number.isFinite(v)) return null;
+    return Math.min(MAX_STROKES, Math.max(1, v));
   }
 
   function clampPar(n) {
@@ -109,21 +129,90 @@
     return DEFAULT_PAR;
   }
 
-  function normalizeRound(r) {
-    const scores = Array.isArray(r.scores)
-      ? r.scores.map((n) => clampScore(Number(n) || DEFAULT_STROKES))
-      : Array.from({ length: HOLE_COUNT }, () => DEFAULT_STROKES);
-    while (scores.length < HOLE_COUNT) scores.push(DEFAULT_STROKES);
-    scores.length = HOLE_COUNT;
+  function isEntered(score) {
+    return score != null && Number.isFinite(Number(score));
+  }
 
-    let pars;
-    if (Array.isArray(r.pars) && r.pars.length) {
-      pars = r.pars.map((n) => clampPar(n));
-    } else {
-      pars = Array.from({ length: HOLE_COUNT }, () => DEFAULT_PAR);
+  function countEntered(scores, start = 0, end = HOLE_COUNT) {
+    let n = 0;
+    for (let i = start; i < end; i++) if (isEntered(scores[i])) n++;
+    return n;
+  }
+
+  function sumEnteredScores(scores, start, end) {
+    let sum = 0;
+    let count = 0;
+    for (let i = start; i < end; i++) {
+      if (!isEntered(scores[i])) continue;
+      sum += scores[i];
+      count++;
     }
-    while (pars.length < HOLE_COUNT) pars.push(DEFAULT_PAR);
-    pars.length = HOLE_COUNT;
+    return { sum, count };
+  }
+
+  function sumEnteredPars(scores, pars, start, end) {
+    let sum = 0;
+    for (let i = start; i < end; i++) {
+      if (!isEntered(scores[i])) continue;
+      sum += pars[i];
+    }
+    return sum;
+  }
+
+  function statusLabel(status) {
+    return status === "complete" ? "完了" : "プレー中";
+  }
+
+  function displayCount(value, count) {
+    return count > 0 ? String(value) : "—";
+  }
+
+  /**
+   * Legacy rounds stored 18 numeric scores and had no status.
+   * Those stay complete. Null scores are the new unentered state.
+   */
+  function normalizeRound(raw) {
+    const r = raw && typeof raw === "object" ? raw : {};
+    const rawScores = Array.isArray(r.scores) ? r.scores : null;
+    const explicitStatus = r.status === "in_progress" || r.status === "complete";
+    const looksLegacy =
+      !explicitStatus &&
+      Array.isArray(rawScores) &&
+      rawScores.length > 0 &&
+      rawScores.every((n) => n !== null && n !== "" && Number.isFinite(Number(n)));
+
+    const scores = Array.from({ length: HOLE_COUNT }, (_, i) => {
+      const fallback = looksLegacy ? DEFAULT_STROKES : null;
+      if (!rawScores || i >= rawScores.length) return fallback;
+      const cell = rawScores[i];
+      if (cell === null || cell === undefined || cell === "") return fallback;
+      const n = clampScore(cell);
+      return n == null ? fallback : n;
+    });
+
+    const pars = Array.from({ length: HOLE_COUNT }, (_, i) => {
+      if (!Array.isArray(r.pars) || i >= r.pars.length) return DEFAULT_PAR;
+      const cell = r.pars[i];
+      if (cell === null || cell === undefined || cell === "") return DEFAULT_PAR;
+      return clampPar(cell);
+    });
+
+    const entered = countEntered(scores);
+    let status;
+    let manualComplete = false;
+    if (entered === HOLE_COUNT) {
+      status = "complete";
+      manualComplete = false;
+    } else if (r.status === "complete" || r.manualComplete === true) {
+      status = "complete";
+      manualComplete = true;
+    } else if (looksLegacy) {
+      status = "complete";
+      manualComplete = false;
+    } else {
+      status = "in_progress";
+      manualComplete = false;
+    }
 
     return {
       id: String(r.id || uid()),
@@ -131,9 +220,16 @@
       memo: String(r.memo || ""),
       scores,
       pars,
+      status,
+      manualComplete,
       createdAt: String(r.createdAt || new Date().toISOString()),
       updatedAt: String(r.updatedAt || r.createdAt || new Date().toISOString()),
     };
+  }
+
+  function compareRounds(a, b) {
+    if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+    return a.updatedAt < b.updatedAt ? 1 : -1;
   }
 
   function loadRounds() {
@@ -142,12 +238,7 @@
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
-      return parsed
-        .map(normalizeRound)
-        .sort((a, b) => {
-          if (a.date !== b.date) return a.date < b.date ? 1 : -1;
-          return a.updatedAt < b.updatedAt ? 1 : -1;
-        });
+      return parsed.map(normalizeRound).sort(compareRounds);
     } catch {
       return [];
     }
@@ -157,14 +248,28 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(rounds));
   }
 
-  function sumRange(arr, start, end) {
-    let t = 0;
-    for (let i = start; i < end; i++) t += arr[i];
-    return t;
+  function snapshotRound(r) {
+    return {
+      id: r.id,
+      date: r.date,
+      memo: r.memo,
+      scores: r.scores.slice(),
+      pars: r.pars.slice(),
+      status: r.status,
+      manualComplete: !!r.manualComplete,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    };
   }
 
-  function totalOf(scores) {
-    return sumRange(scores, 0, HOLE_COUNT);
+  function findInProgressRound() {
+    const list = rounds.filter((r) => r.status === "in_progress");
+    list.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+    return list[0] || null;
+  }
+
+  function firstUnenteredIndex(scores) {
+    return scores.findIndex((s) => !isEntered(s));
   }
 
   function formatDiff(diff) {
@@ -205,18 +310,21 @@
     });
     els.title.textContent = title;
     els.backBtn.hidden = name === "home";
-    window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+    window.scrollTo(0, 0);
   }
 
   function blankRound() {
+    const now = new Date().toISOString();
     return {
       id: uid(),
       date: todayISO(),
       memo: "",
-      scores: Array.from({ length: HOLE_COUNT }, () => DEFAULT_STROKES),
+      scores: Array.from({ length: HOLE_COUNT }, () => null),
       pars: Array.from({ length: HOLE_COUNT }, () => DEFAULT_PAR),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      status: "in_progress",
+      manualComplete: false,
+      createdAt: now,
+      updatedAt: now,
     };
   }
 
@@ -228,8 +336,38 @@
       .replace(/"/g, "&quot;");
   }
 
+  function roundFigures(r) {
+    const total = sumEnteredScores(r.scores, 0, HOLE_COUNT);
+    const out = sumEnteredScores(r.scores, 0, 9);
+    const inn = sumEnteredScores(r.scores, 9, 18);
+    const parTotal = sumEnteredPars(r.scores, r.pars, 0, HOLE_COUNT);
+    const outPar = sumEnteredPars(r.scores, r.pars, 0, 9);
+    const inPar = sumEnteredPars(r.scores, r.pars, 9, 18);
+    return { total, out, inn, parTotal, outPar, inPar };
+  }
+
   function renderHome() {
     setView("home", "ゴルフスコア帳");
+    const progress = findInProgressRound();
+    if (els.resumeBlock) {
+      if (progress) {
+        const n = countEntered(progress.scores);
+        const hole = firstUnenteredIndex(progress.scores);
+        const holeLabel = hole >= 0 ? `${hole + 1}番ホールから` : "続きから";
+        els.resumeBlock.hidden = false;
+        els.resumeNote.textContent = `${formatDateJP(progress.date)} · ${n}/18ホール · ${holeLabel}`;
+        els.btnResume.setAttribute(
+          "aria-label",
+          `${formatDateJP(progress.date)}のプレー中ラウンドを${holeLabel}入力する`
+        );
+      } else {
+        els.resumeBlock.hidden = true;
+      }
+    }
+    if (els.btnNew) {
+      els.btnNew.classList.toggle("btn-primary", !progress);
+      els.btnNew.classList.toggle("btn-secondary", !!progress);
+    }
 
     if (!rounds.length) {
       els.latestScore.textContent = "—";
@@ -243,10 +381,10 @@
     els.emptyState.hidden = true;
     if (els.btnExportAll) els.btnExportAll.hidden = false;
     const latest = rounds[0];
-    const total = totalOf(latest.scores);
-    const parTotal = totalOf(latest.pars);
-    els.latestScore.textContent = String(total);
-    els.latestMeta.textContent = `${formatDateJP(latest.date)} · ${formatDiff(total - parTotal)} · ${rounds.length}ラウンド`;
+    const figs = roundFigures(latest);
+    els.latestScore.textContent = displayCount(figs.total.sum, figs.total.count);
+    const diffText = figs.total.count ? formatDiff(figs.total.sum - figs.parTotal) : "—";
+    els.latestMeta.textContent = `${formatDateJP(latest.date)}\n${statusLabel(latest.status)} · ${figs.total.count}/18 · ${diffText} · ${rounds.length}ラウンド`;
 
     els.roundList.innerHTML = "";
     rounds.forEach((r) => {
@@ -254,16 +392,27 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "round-item";
-      btn.setAttribute("aria-label", `${formatDateJP(r.date)} のラウンドを開く`);
+      btn.dataset.status = r.status;
       const memo = (r.memo || "").trim();
-      const totalScore = totalOf(r.scores);
-      const diff = totalScore - totalOf(r.pars);
+      const figsR = roundFigures(r);
+      const n = figsR.total.count;
+      const diff = n ? formatDiff(figsR.total.sum - figsR.parTotal) : "—";
+      const outText = displayCount(figsR.out.sum, figsR.out.count);
+      const inText = displayCount(figsR.inn.sum, figsR.inn.count);
+      const badgeClass = r.status === "complete" ? "is-complete" : "is-progress";
+      btn.setAttribute(
+        "aria-label",
+        `${formatDateJP(r.date)} ${statusLabel(r.status)} のラウンドを開く`
+      );
       btn.innerHTML = `
         <div class="round-item-main">
-          <div class="round-item-date">${escapeHtml(formatDateJP(r.date))}</div>
-          <div class="round-item-meta">${escapeHtml(memo || "メモなし")} · OUT ${sumRange(r.scores, 0, 9)} / IN ${sumRange(r.scores, 9, 18)} · ${formatDiff(diff)}</div>
+          <div class="round-item-date">
+            <span>${escapeHtml(formatDateJP(r.date))}</span>
+            <span class="status-badge ${badgeClass}">${statusLabel(r.status)}</span>
+          </div>
+          <div class="round-item-meta">${escapeHtml(memo || "メモなし")} · ${n}/18 · OUT ${outText} / IN ${inText} · ${diff}</div>
         </div>
-        <div class="round-item-score">${totalScore}</div>
+        <div class="round-item-score">${n ? figsR.total.sum : "—"}</div>
       `;
       btn.addEventListener("click", () => openDetail(r.id));
       li.appendChild(btn);
@@ -273,13 +422,31 @@
 
   function updateEditSummary() {
     if (!editing) return;
-    const total = totalOf(editing.scores);
-    const parTotal = totalOf(editing.pars);
-    els.sumTotal.textContent = String(total);
-    els.sumOut.textContent = String(sumRange(editing.scores, 0, 9));
-    els.sumIn.textContent = String(sumRange(editing.scores, 9, 18));
-    if (els.sumPar) els.sumPar.textContent = String(parTotal);
-    if (els.sumDiff) els.sumDiff.textContent = formatDiff(total - parTotal);
+    const figs = roundFigures(editing);
+    els.sumTotal.textContent = displayCount(figs.total.sum, figs.total.count);
+    els.sumOut.textContent = displayCount(figs.out.sum, figs.out.count);
+    els.sumIn.textContent = displayCount(figs.inn.sum, figs.inn.count);
+    if (els.sumPar) els.sumPar.textContent = displayCount(figs.parTotal, figs.total.count);
+    if (els.sumDiff) {
+      els.sumDiff.textContent = figs.total.count
+        ? formatDiff(figs.total.sum - figs.parTotal)
+        : "—";
+    }
+  }
+
+  function updateEditChrome() {
+    if (!editing) return;
+    const n = countEntered(editing.scores);
+    const complete = editing.status === "complete";
+    if (els.editStatus) {
+      els.editStatus.textContent = statusLabel(editing.status);
+      els.editStatus.className = `status-badge ${complete ? "is-complete" : "is-progress"}`;
+    }
+    if (els.editProgressText) {
+      els.editProgressText.textContent = `${n}/${HOLE_COUNT}ホールを集計`;
+    }
+    if (els.btnComplete) els.btnComplete.hidden = complete;
+    if (els.btnReopen) els.btnReopen.hidden = !(complete && n < HOLE_COUNT);
   }
 
   function isPresetStroke(n) {
@@ -290,41 +457,47 @@
     els.holeGrid.innerHTML = "";
     if (!editing) return;
     if (otherOpen.length !== HOLE_COUNT) {
-      otherOpen = editing.scores.map((s) => !isPresetStroke(s));
+      otherOpen = editing.scores.map((s) => isEntered(s) && !isPresetStroke(s));
     }
 
     for (let i = 0; i < HOLE_COUNT; i++) {
       const side = i < 9 ? "OUT" : "IN";
-      const score = editing.scores[i];
+      const score = isEntered(editing.scores[i]) ? editing.scores[i] : null;
       const par = editing.pars[i];
-      const useOther = otherOpen[i] || !isPresetStroke(score);
+      const entered = score != null;
+      const useOther = otherOpen[i] || (entered && !isPresetStroke(score));
       otherOpen[i] = useOther;
-      const holeDiff = score - par;
+      const isNext = i === highlightHole;
 
       const card = document.createElement("article");
-      card.className = "hole-card";
+      card.className = `hole-card${entered ? "" : " is-empty"}${isNext ? " is-next" : ""}`;
       card.dataset.hole = String(i);
+      card.id = `hole-card-${i}`;
+      if (isNext) card.tabIndex = -1;
 
       const parBtns = PAR_CHOICES.map(
         (p) =>
           `<button type="button" class="chip chip-par${p === par ? " selected" : ""}" data-par="${p}" aria-pressed="${p === par}">PAR${p}</button>`
       ).join("");
 
-      const strokeBtns = STROKE_CHOICES.map(
-        (s) =>
-          `<button type="button" class="chip chip-stroke${!useOther && s === score ? " selected" : ""}" data-stroke="${s}" aria-pressed="${!useOther && s === score}">${s}</button>`
-      ).join("");
+      const strokeBtns = STROKE_CHOICES.map((s) => {
+        const selected = entered && !useOther && s === score;
+        return `<button type="button" class="chip chip-stroke${selected ? " selected" : ""}" data-stroke="${s}" aria-pressed="${selected}">${s}</button>`;
+      }).join("");
+
+      const scoreHtml = entered
+        ? `<span class="hole-result-score">${score}</span><span class="hole-result-meta">PAR${par} · ${formatDiff(score - par)}</span>`
+        : `<span class="hole-result-score is-empty">未入力</span><span class="hole-result-meta">PAR${par} · 打数を選択</span>`;
+
+      const nextTag = isNext ? `<span class="hole-next-tag">続きはここから</span>` : "";
 
       card.innerHTML = `
         <div class="hole-card-head">
           <div class="hole-label">
             ${i + 1}H
-            <small>${side}</small>
+            <small>${side}${nextTag}</small>
           </div>
-          <div class="hole-result" aria-live="polite">
-            <span class="hole-result-score">${score}</span>
-            <span class="hole-result-meta">PAR${par} · ${formatDiff(holeDiff)}</span>
-          </div>
+          <div class="hole-result" aria-live="polite">${scoreHtml}</div>
         </div>
         <div class="hole-section">
           <div class="hole-section-label">PAR</div>
@@ -344,7 +517,8 @@
               inputmode="numeric"
               min="1"
               max="${MAX_STROKES}"
-              value="${score}"
+              placeholder="11〜99"
+              value="${entered ? score : ""}"
               aria-label="${i + 1}番ホールの打数（自由入力）"
             />
           </div>
@@ -354,8 +528,9 @@
       card.querySelectorAll("[data-par]").forEach((btn) => {
         btn.addEventListener("click", () => {
           editing.pars[i] = clampPar(Number(btn.getAttribute("data-par")));
+          const result = commitEditing();
           refreshHoleCard(i);
-          updateEditSummary();
+          if (result.becameComplete) showToast("18ホール入力済みのため完了にしました");
         });
       });
 
@@ -363,16 +538,16 @@
         btn.addEventListener("click", () => {
           otherOpen[i] = false;
           editing.scores[i] = clampScore(Number(btn.getAttribute("data-stroke")));
+          const result = commitEditing();
           refreshHoleCard(i);
-          updateEditSummary();
+          if (result.becameComplete) showToast("18ホール入力済みのため完了にしました");
         });
       });
 
       card.querySelector("[data-other]").addEventListener("click", () => {
         otherOpen[i] = true;
         refreshHoleCard(i);
-        updateEditSummary();
-        const input = els.holeGrid.querySelector(`#other-${i}`);
+        const input = document.getElementById(`other-${i}`);
         if (input) {
           input.focus();
           input.select();
@@ -380,36 +555,54 @@
       });
 
       const otherInput = card.querySelector(".other-input");
-      otherInput.addEventListener("input", () => {
-        const raw = otherInput.value;
-        if (raw === "") return;
-        editing.scores[i] = clampScore(Number(raw));
+      const applyOther = (raw, { refresh }) => {
+        if (raw.trim() === "") {
+          editing.scores[i] = null;
+        } else {
+          const n = clampScore(raw);
+          if (n == null) return;
+          editing.scores[i] = n;
+        }
         otherOpen[i] = true;
-        // update result display without full rebuild of focus
-        const resultScore = card.querySelector(".hole-result-score");
-        const resultMeta = card.querySelector(".hole-result-meta");
-        resultScore.textContent = String(editing.scores[i]);
-        resultMeta.textContent = `PAR${editing.pars[i]} · ${formatDiff(editing.scores[i] - editing.pars[i])}`;
-        updateEditSummary();
+        const result = commitEditing();
+        if (refresh) {
+          refreshHoleCard(i);
+        } else {
+          paintHoleResult(card, i);
+        }
+        if (result.becameComplete) showToast("18ホール入力済みのため完了にしました");
+      };
+      otherInput.addEventListener("input", () => {
+        applyOther(otherInput.value, { refresh: false });
       });
       otherInput.addEventListener("change", () => {
-        editing.scores[i] = clampScore(Number(otherInput.value) || 1);
-        otherInput.value = String(editing.scores[i]);
-        refreshHoleCard(i);
-        updateEditSummary();
-      });
-      otherInput.addEventListener("blur", () => {
-        editing.scores[i] = clampScore(Number(otherInput.value) || 1);
-        otherInput.value = String(editing.scores[i]);
-        updateEditSummary();
+        applyOther(otherInput.value, { refresh: true });
       });
 
       els.holeGrid.appendChild(card);
     }
   }
 
-  function refreshHoleCard(index) {
-    // Rebuild all for simplicity & consistent selected states
+  function paintHoleResult(card, i) {
+    const score = isEntered(editing.scores[i]) ? editing.scores[i] : null;
+    const par = editing.pars[i];
+    const scoreEl = card.querySelector(".hole-result-score");
+    const metaEl = card.querySelector(".hole-result-meta");
+    if (!scoreEl || !metaEl) return;
+    if (score == null) {
+      scoreEl.textContent = "未入力";
+      scoreEl.classList.add("is-empty");
+      metaEl.textContent = `PAR${par} · 打数を選択`;
+      card.classList.add("is-empty");
+    } else {
+      scoreEl.textContent = String(score);
+      scoreEl.classList.remove("is-empty");
+      metaEl.textContent = `PAR${par} · ${formatDiff(score - par)}`;
+      card.classList.remove("is-empty");
+    }
+  }
+
+  function refreshHoleCard() {
     const scrollY = window.scrollY;
     const activeId = document.activeElement && document.activeElement.id;
     renderHoleGrid();
@@ -420,36 +613,147 @@
     }
   }
 
+  function syncEditingFromForm() {
+    if (!editing) return;
+    if (els.editDate) editing.date = els.editDate.value || editing.date || todayISO();
+    if (els.editMemo) editing.memo = els.editMemo.value;
+    for (let i = 0; i < HOLE_COUNT; i++) {
+      if (!otherOpen[i]) continue;
+      const input = document.getElementById(`other-${i}`);
+      if (!input) continue;
+      const raw = input.value.trim();
+      if (raw === "") editing.scores[i] = null;
+      else {
+        const n = clampScore(raw);
+        if (n != null) editing.scores[i] = n;
+      }
+    }
+    for (let i = 0; i < HOLE_COUNT; i++) {
+      if (isEntered(editing.scores[i])) editing.scores[i] = clampScore(editing.scores[i]);
+      else editing.scores[i] = null;
+      editing.pars[i] = clampPar(editing.pars[i]);
+    }
+  }
+
+  function isPristineNew() {
+    if (!editing || !editingIsNew) return false;
+    if ((editing.memo || "").trim()) return false;
+    if (editing.scores.some((s) => isEntered(s))) return false;
+    if (editing.pars.some((p) => p !== DEFAULT_PAR)) return false;
+    if ((editing.date || "") !== editingInitialDate) return false;
+    if (editing.manualComplete) return false;
+    return true;
+  }
+
+  /**
+   * @returns {{ becameComplete: boolean, saved: boolean }}
+   */
+  function reconcileStatus(round, manual) {
+    const was = round.status;
+    const n = countEntered(round.scores);
+    if (manual === true) {
+      round.status = "complete";
+      round.manualComplete = true;
+    } else if (manual === false) {
+      round.manualComplete = false;
+      round.status = n === HOLE_COUNT ? "complete" : "in_progress";
+    } else if (n === HOLE_COUNT) {
+      round.status = "complete";
+      round.manualComplete = false;
+    } else if (round.manualComplete) {
+      round.status = "complete";
+    } else {
+      round.status = "in_progress";
+    }
+    return { becameComplete: was !== "complete" && round.status === "complete" };
+  }
+
+  function writeEditingToStore() {
+    editing.updatedAt = new Date().toISOString();
+    const snap = snapshotRound(editing);
+    const idx = rounds.findIndex((r) => r.id === editing.id);
+    if (idx >= 0) rounds[idx] = snap;
+    else rounds.unshift(snap);
+    rounds.sort(compareRounds);
+    saveRounds();
+    editingIsNew = false;
+    if (els.btnDeleteEdit) els.btnDeleteEdit.hidden = false;
+    if (els.saveHint) els.saveHint.textContent = "自動保存しました";
+  }
+
+  function commitEditing({ force = false, manual } = {}) {
+    if (!editing) return { becameComplete: false, saved: false };
+    syncEditingFromForm();
+    const statusResult = reconcileStatus(editing, manual);
+    updateEditSummary();
+    updateEditChrome();
+    if (!force && isPristineNew()) return { becameComplete: false, saved: false };
+    writeEditingToStore();
+    return { becameComplete: statusResult.becameComplete, saved: true };
+  }
+
+  function focusHoleCard(index) {
+    const card = document.getElementById(`hole-card-${index}`);
+    if (!card) return;
+    card.tabIndex = -1;
+    const headerOffset = 76;
+    const top = card.getBoundingClientRect().top + window.scrollY - headerOffset;
+    window.scrollTo(0, Math.max(0, top));
+    card.focus({ preventScroll: true });
+  }
+
   function openNew() {
     editing = blankRound();
+    editingIsNew = true;
+    editingInitialDate = editing.date;
     otherOpen = Array.from({ length: HOLE_COUNT }, () => false);
+    highlightHole = -1;
+    detailId = null;
     els.editDate.value = editing.date;
     els.editMemo.value = "";
     els.btnDeleteEdit.hidden = true;
+    if (els.saveHint) els.saveHint.textContent = "入力は自動で保存されます";
     setView("edit", "新しいラウンド");
     renderHoleGrid();
     updateEditSummary();
+    updateEditChrome();
   }
 
-  function openEdit(id) {
+  function openEdit(id, opts = {}) {
     const found = rounds.find((r) => r.id === id);
     if (!found) {
       showToast("ラウンドが見つかりません");
       renderHome();
       return;
     }
-    editing = {
-      ...found,
-      scores: found.scores.slice(),
-      pars: found.pars.slice(),
-    };
-    otherOpen = editing.scores.map((s) => !isPresetStroke(s));
-    els.editDate.value = editing.date;
+    editing = snapshotRound(found);
+    editingIsNew = false;
+    editingInitialDate = editing.date;
+    otherOpen = editing.scores.map((s) => isEntered(s) && !isPresetStroke(s));
+    highlightHole = -1;
+    if (opts.focusFirstEmpty) {
+      highlightHole = firstUnenteredIndex(editing.scores);
+    }
+    els.editDate.value = editing.date || "";
     els.editMemo.value = editing.memo || "";
     els.btnDeleteEdit.hidden = false;
-    setView("edit", "ラウンドを編集");
+    if (els.saveHint) els.saveHint.textContent = "入力は自動で保存されます";
+    setView("edit", opts.title || "ラウンドを編集");
     renderHoleGrid();
     updateEditSummary();
+    updateEditChrome();
+    if (highlightHole >= 0) focusHoleCard(highlightHole);
+  }
+
+  function openResume() {
+    const round = findInProgressRound();
+    if (!round) {
+      showToast("プレー中のラウンドはありません");
+      renderHome();
+      return;
+    }
+    detailId = null;
+    openEdit(round.id, { focusFirstEmpty: true, title: "続きから入力" });
   }
 
   function openDetail(id) {
@@ -460,34 +764,51 @@
       return;
     }
     detailId = id;
-    const total = totalOf(found.scores);
-    const parTotal = totalOf(found.pars);
+    const figs = roundFigures(found);
+    const n = figs.total.count;
     els.detailDate.textContent = formatDateJP(found.date);
+    if (els.detailStatus) {
+      els.detailStatus.textContent = statusLabel(found.status);
+      els.detailStatus.className = `status-badge ${found.status === "complete" ? "is-complete" : "is-progress"}`;
+    }
+    if (els.detailProgress) {
+      els.detailProgress.textContent = `入力 ${n}/${HOLE_COUNT}ホール`;
+    }
     const memo = (found.memo || "").trim();
     els.detailMemo.textContent = memo || "メモなし";
     els.detailMemo.style.opacity = memo ? "1" : "0.7";
-    els.detailTotal.textContent = String(total);
-    els.detailOut.textContent = String(sumRange(found.scores, 0, 9));
-    els.detailIn.textContent = String(sumRange(found.scores, 9, 18));
-    if (els.detailPar) els.detailPar.textContent = String(parTotal);
-    if (els.detailDiff) els.detailDiff.textContent = formatDiff(total - parTotal);
+    els.detailTotal.textContent = displayCount(figs.total.sum, n);
+    els.detailOut.textContent = displayCount(figs.out.sum, figs.out.count);
+    els.detailIn.textContent = displayCount(figs.inn.sum, figs.inn.count);
+    if (els.detailPar) els.detailPar.textContent = displayCount(figs.parTotal, n);
+    if (els.detailDiff) {
+      els.detailDiff.textContent = n ? formatDiff(figs.total.sum - figs.parTotal) : "—";
+    }
 
     els.detailHoles.innerHTML = "";
     found.scores.forEach((s, i) => {
       const cell = document.createElement("div");
-      cell.className = "detail-hole";
-      const p = found.pars[i];
-      cell.innerHTML = `
-        <div class="n">${i + 1}H · PAR${p}</div>
-        <div class="s">${s}</div>
-        <div class="d">${formatDiff(s - p)}</div>
-      `;
+      const entered = isEntered(s);
+      cell.className = `detail-hole${entered ? "" : " is-empty"}`;
+      if (entered) {
+        const p = found.pars[i];
+        cell.innerHTML = `
+          <div class="n">${i + 1}H · PAR${p}</div>
+          <div class="s">${s}</div>
+          <div class="d">${formatDiff(s - p)}</div>
+        `;
+      } else {
+        cell.innerHTML = `
+          <div class="n">${i + 1}H</div>
+          <div class="s">—</div>
+          <div class="d">未入力</div>
+        `;
+      }
       els.detailHoles.appendChild(cell);
     });
 
     setView("detail", "ラウンド詳細");
   }
-
 
   function escapeMdCell(s) {
     return String(s).replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
@@ -497,26 +818,49 @@
     return (iso || todayISO()).replace(/-/g, "");
   }
 
+  function mdSideLine(label, rangeLabel, scores, pars, start, end) {
+    const stat = sumEnteredScores(scores, start, end);
+    const holes = end - start;
+    if (!stat.count) return `- ${label} (${rangeLabel}): -（未入力）`;
+    const par = sumEnteredPars(scores, pars, start, end);
+    return `- ${label} (${rangeLabel}): ${stat.sum}（PAR ${par} / ${formatDiff(stat.sum - par)}、入力 ${stat.count}/${holes}）`;
+  }
+
+  function mdAggregate(scores, pars, start, end) {
+    const stat = sumEnteredScores(scores, start, end);
+    if (!stat.count) return { score: "-", par: "-", diff: "-" };
+    const par = sumEnteredPars(scores, pars, start, end);
+    return {
+      score: String(stat.sum),
+      par: String(par),
+      diff: formatDiff(stat.sum - par),
+    };
+  }
+
   function roundToMarkdown(r, { headingLevel = 2 } = {}) {
     const h = "#".repeat(headingLevel);
-    const total = totalOf(r.scores);
-    const parTotal = totalOf(r.pars);
-    const out = sumRange(r.scores, 0, 9);
-    const inn = sumRange(r.scores, 9, 18);
-    const outPar = sumRange(r.pars, 0, 9);
-    const inPar = sumRange(r.pars, 9, 18);
+    const entered = countEntered(r.scores);
+    const total = mdAggregate(r.scores, r.pars, 0, HOLE_COUNT);
+    const out = mdAggregate(r.scores, r.pars, 0, 9);
+    const inn = mdAggregate(r.scores, r.pars, 9, 18);
     const memo = (r.memo || "").trim() || "（なし）";
     const lines = [];
     lines.push(`${h} ラウンド ${formatDateJP(r.date)}`);
     lines.push("");
     lines.push(`- 日付: ${r.date || "（未設定）"}`);
+    lines.push(`- 状態: ${statusLabel(r.status)}`);
+    lines.push(`- 入力ホール: **${entered}/${HOLE_COUNT}**`);
     lines.push(`- メモ: ${memo}`);
-    lines.push(`- 合計打数: **${total}**`);
-    lines.push(`- PAR計: **${parTotal}**`);
-    lines.push(`- 差: **${formatDiff(total - parTotal)}**`);
-    lines.push(`- OUT (1–9): ${out}（PAR ${outPar} / ${formatDiff(out - outPar)}）`);
-    lines.push(`- IN (10–18): ${inn}（PAR ${inPar} / ${formatDiff(inn - inPar)}）`);
+    lines.push(`- 合計打数: **${total.score}**`);
+    lines.push(`- PAR計: **${total.par}**（入力済みホールのPARのみ）`);
+    lines.push(`- 差: **${total.diff}**`);
+    lines.push(mdSideLine("OUT", "1–9", r.scores, r.pars, 0, 9));
+    lines.push(mdSideLine("IN", "10–18", r.scores, r.pars, 9, 18));
     lines.push(`- 記録ID: \`${r.id}\``);
+    lines.push("");
+    lines.push(
+      `未入力ホールは「-」です。合計・PAR計・差・OUT・IN は入力済み ${entered} ホールだけを集計しています。`
+    );
     lines.push("");
     lines.push("### ホール別スコア");
     lines.push("");
@@ -524,43 +868,44 @@
     lines.push("| ---: | :--- | ---: | ---: | ---: |");
     for (let i = 0; i < HOLE_COUNT; i++) {
       const side = i < 9 ? "OUT" : "IN";
-      const par = r.pars[i];
-      const score = r.scores[i];
-      lines.push(
-        `| ${i + 1} | ${side} | ${par} | ${score} | ${formatDiff(score - par)} |`
-      );
+      if (!isEntered(r.scores[i])) {
+        lines.push(`| ${i + 1} | ${side} | - | - | - |`);
+      } else {
+        const par = r.pars[i];
+        const score = r.scores[i];
+        lines.push(`| ${i + 1} | ${side} | ${par} | ${score} | ${formatDiff(score - par)} |`);
+      }
     }
     lines.push("");
     lines.push("| 集計 | 打数 | PAR | 差 |");
     lines.push("| :--- | ---: | ---: | ---: |");
-    lines.push(`| OUT | ${out} | ${outPar} | ${formatDiff(out - outPar)} |`);
-    lines.push(`| IN | ${inn} | ${inPar} | ${formatDiff(inn - inPar)} |`);
-    lines.push(`| 合計 | ${total} | ${parTotal} | ${formatDiff(total - parTotal)} |`);
+    lines.push(`| OUT | ${out.score} | ${out.par} | ${out.diff} |`);
+    lines.push(`| IN | ${inn.score} | ${inn.par} | ${inn.diff} |`);
+    lines.push(`| 合計 | ${total.score} | ${total.par} | ${total.diff} |`);
     lines.push("");
     return lines.join("\n");
   }
 
   function allRoundsToMarkdown(list) {
-    const sorted = list.slice().sort((a, b) => {
-      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
-      return a.updatedAt < b.updatedAt ? 1 : -1;
-    });
+    const sorted = list.slice().sort(compareRounds);
     const lines = [];
     lines.push("# ゴルフスコア記録（全履歴）");
     lines.push("");
     lines.push(`- 書き出し日: ${formatDateJP(todayISO())}`);
     lines.push(`- ラウンド数: ${sorted.length}`);
+    lines.push("- 集計は各ラウンドの入力済みホールのみです。未入力ホールは「-」です。");
     lines.push("");
     lines.push("## 一覧");
     lines.push("");
-    lines.push("| # | 日付 | 合計 | PAR計 | 差 | OUT | IN | メモ |");
-    lines.push("| ---: | :--- | ---: | ---: | ---: | ---: | ---: | :--- |");
+    lines.push("| # | 日付 | 状態 | 入力 | 合計 | PAR計 | 差 | OUT | IN | メモ |");
+    lines.push("| ---: | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- |");
     sorted.forEach((r, idx) => {
-      const total = totalOf(r.scores);
-      const parTotal = totalOf(r.pars);
+      const total = mdAggregate(r.scores, r.pars, 0, HOLE_COUNT);
+      const out = mdAggregate(r.scores, r.pars, 0, 9);
+      const inn = mdAggregate(r.scores, r.pars, 9, 18);
       const memo = escapeMdCell((r.memo || "").trim() || "—");
       lines.push(
-        `| ${idx + 1} | ${r.date || "—"} | ${total} | ${parTotal} | ${formatDiff(total - parTotal)} | ${sumRange(r.scores, 0, 9)} | ${sumRange(r.scores, 9, 18)} | ${memo} |`
+        `| ${idx + 1} | ${r.date || "—"} | ${statusLabel(r.status)} | ${countEntered(r.scores)}/${HOLE_COUNT} | ${total.score} | ${total.par} | ${total.diff} | ${out.score} | ${inn.score} | ${memo} |`
       );
     });
     lines.push("");
@@ -623,47 +968,24 @@
 
   function saveEditing() {
     if (!editing) return;
-    // sync any open other inputs
-    for (let i = 0; i < HOLE_COUNT; i++) {
-      const input = document.getElementById(`other-${i}`);
-      if (input && otherOpen[i]) {
-        editing.scores[i] = clampScore(Number(input.value) || 1);
-      }
-      editing.scores[i] = clampScore(editing.scores[i]);
-      editing.pars[i] = clampPar(editing.pars[i]);
-    }
-
-    const date = els.editDate.value || todayISO();
-    const memo = els.editMemo.value.trim();
-    editing.date = date;
-    editing.memo = memo;
-    editing.updatedAt = new Date().toISOString();
-
-    const idx = rounds.findIndex((r) => r.id === editing.id);
-    if (idx >= 0) {
-      rounds[idx] = {
-        ...editing,
-        scores: editing.scores.slice(),
-        pars: editing.pars.slice(),
-      };
-      showToast("ラウンドを更新しました");
-    } else {
-      rounds.unshift({
-        ...editing,
-        scores: editing.scores.slice(),
-        pars: editing.pars.slice(),
-      });
-      showToast("ラウンドを保存しました");
-    }
-
-    rounds.sort((a, b) => {
-      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
-      return a.updatedAt < b.updatedAt ? 1 : -1;
-    });
-    saveRounds();
+    commitEditing({ force: true });
     const savedId = editing.id;
     editing = null;
+    highlightHole = -1;
+    showToast("ラウンドを保存しました");
     openDetail(savedId);
+  }
+
+  function markComplete() {
+    if (!editing) return;
+    const result = commitEditing({ force: true, manual: true });
+    if (result.saved) showToast("ラウンドを完了にしました");
+  }
+
+  function reopenRound() {
+    if (!editing) return;
+    commitEditing({ force: true, manual: false });
+    showToast("プレー中に戻しました");
   }
 
   async function deleteById(id) {
@@ -675,17 +997,24 @@
     rounds = rounds.filter((r) => r.id !== id);
     saveRounds();
     editing = null;
+    editingIsNew = false;
     detailId = null;
+    highlightHole = -1;
     showToast("削除しました");
     renderHome();
   }
 
   function goBack() {
     if (currentView === "edit") {
-      if (detailId && rounds.some((r) => r.id === detailId)) {
-        openDetail(detailId);
+      commitEditing();
+      const id = editing ? editing.id : null;
+      const returnToDetail = detailId && detailId === id && rounds.some((r) => r.id === id);
+      editing = null;
+      highlightHole = -1;
+      if (returnToDetail) {
+        openDetail(id);
       } else {
-        editing = null;
+        detailId = null;
         renderHome();
       }
       return;
@@ -697,11 +1026,12 @@
   }
 
   els.btnNew.addEventListener("click", openNew);
+  if (els.btnResume) els.btnResume.addEventListener("click", openResume);
   els.backBtn.addEventListener("click", goBack);
   els.btnSave.addEventListener("click", saveEditing);
-  if (els.btnExportAll) {
-    els.btnExportAll.addEventListener("click", exportAllRounds);
-  }
+  if (els.btnComplete) els.btnComplete.addEventListener("click", markComplete);
+  if (els.btnReopen) els.btnReopen.addEventListener("click", reopenRound);
+  if (els.btnExportAll) els.btnExportAll.addEventListener("click", exportAllRounds);
   if (els.btnExportOne) {
     els.btnExportOne.addEventListener("click", () => {
       if (detailId) exportOneRound(detailId);
@@ -711,7 +1041,7 @@
     if (detailId) openEdit(detailId);
   });
   els.btnDeleteEdit.addEventListener("click", () => {
-    if (editing) deleteById(editing.id);
+    if (editing && rounds.some((r) => r.id === editing.id)) deleteById(editing.id);
   });
   els.btnDeleteDetail.addEventListener("click", () => {
     if (detailId) deleteById(detailId);
@@ -720,6 +1050,29 @@
   els.confirmOk.addEventListener("click", () => closeConfirm(true));
   els.confirm.addEventListener("click", (e) => {
     if (e.target === els.confirm) closeConfirm(false);
+  });
+
+  if (els.editDate) {
+    els.editDate.addEventListener("change", () => {
+      if (!editing) return;
+      editing.date = els.editDate.value || todayISO();
+      if (!els.editDate.value) els.editDate.value = editing.date;
+      commitEditing();
+    });
+  }
+  if (els.editMemo) {
+    els.editMemo.addEventListener("input", () => {
+      if (!editing) return;
+      editing.memo = els.editMemo.value;
+      commitEditing();
+    });
+  }
+
+  window.addEventListener("pagehide", () => {
+    if (currentView === "edit") commitEditing();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden" && currentView === "edit") commitEditing();
   });
 
   rounds = loadRounds();
