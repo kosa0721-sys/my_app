@@ -1,22 +1,12 @@
-const CACHE = 'cat-mood-v2';
-const ASSETS = ['./', './index.html', './style.css', './style.css?v=2', './app.js', './app.js?v=2', './manifest.json',
-  './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-192.png', './icons/maskable-512.png',
-  './icons/apple-touch-icon.png', './icons/favicon-32.png', './icons/favicon-48.png', './icons/header-cat.jpg'];
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
-});
+// 猫の気持ちは https://kosa0721-sys.github.io/cat_app/ に移転しました。
+// 古いサービスワーカーを置き換えて、キャッシュを消して自分を解除します。
+self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(
-    keys.filter(k => k.startsWith('cat-mood-') && k !== CACHE).map(k => caches.delete(k))
-  )).then(() => self.clients.claim()));
-});
-self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
-  e.respondWith(
-    fetch(e.request).then(res => {
-      const copy = res.clone();
-      caches.open(CACHE).then(c => c.put(e.request, copy));
-      return res;
-    }).catch(() => caches.match(e.request, { ignoreSearch: true }))
-  );
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k.startsWith('cat-mood-')).map(k => caches.delete(k)));
+    await self.registration.unregister();
+    const cs = await self.clients.matchAll({ type: 'window' });
+    cs.forEach(c => c.navigate('https://kosa0721-sys.github.io/cat_app/').catch(() => {}));
+  })());
 });
