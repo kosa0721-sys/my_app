@@ -1,6 +1,6 @@
 /* Minimal service worker for PWA installability.
    Cache version bumped so installed PWAs pick up course search. */
-const CACHE_NAME = "golf-score-v3";
+const CACHE_NAME = "golf-score-v4";
 const ASSETS = [
   "./",
   "./index.html",
@@ -10,6 +10,10 @@ const ASSETS = [
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  "./icons/icon-maskable-192.png",
+  "./icons/icon-maskable-512.png",
+  "./icons/apple-touch-icon.png",
+  "./icons/favicon-48.png",
 ];
 
 self.addEventListener("install", (event) => {
