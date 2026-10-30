@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <header class="top">
@@ -24,11 +24,14 @@
 
 <main id="selectView">
   <div id="categories"></div>
-  <div class="actions">
-    <button id="resetBtn" class="btn ghost" type="button">リセット</button>
-    <button id="judgeBtn" class="btn primary" type="button" disabled>気持ちを見る 🐾</button>
-  </div>
   <p id="hint" class="hint">1つ以上えらぶと「気持ちを見る」が押せます</p>
+  <div class="actionbar">
+    <span id="selCount" class="selcount"></span>
+    <div class="actions">
+      <button id="resetBtn" class="btn ghost" type="button">リセット</button>
+      <button id="judgeBtn" class="btn primary" type="button" disabled>気持ちを見る 🐾</button>
+    </div>
+  </div>
 
   <section id="historySec" class="card history" hidden>
     <h2>🕰️ 履歴</h2>
@@ -50,6 +53,11 @@
   </section>
 
   <section class="card">
+    <h3>🐱 えらんだサイン</h3>
+    <div id="resSigns" class="chips"></div>
+  </section>
+
+  <section class="card">
     <h3>🔍 こう判断したよ</h3>
     <ul id="resReasons" class="reasons"></ul>
   </section>
@@ -62,12 +70,11 @@
   <p class="note">※ これは猫のしぐさから気持ちを推測する目安で、診断ではありません。元気がない・食べない・痛がるなど気になる様子が続くときは、動物病院に相談してください。</p>
 
   <div class="actions">
-    <button id="backBtn" class="btn ghost" type="button">えらび直す</button>
-    <button id="againBtn" class="btn primary" type="button">最初から 🐾</button>
+    <button id="againBtn" class="btn primary" type="button">もう一度えらぶ 🐾</button>
   </div>
 </main>
 
 <footer class="foot">🐾 🐾 🐾</footer>
-<script src="app.js"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

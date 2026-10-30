@@ -21,41 +21,41 @@ const MOODS = {
 // 一般的に知られている猫のボディランゲージにもとづく目安の重み
 const CATEGORIES = [
   { id: 'tail', cls: 'c-tail', title: '🐈 しっぽ', multi: false, signs: [
-    { id: 'tail_up',     label: 'ピンと立っている',   w: { amae: 3, demand: 2, play: 1 }, why: 'しっぽがピンと立つのは、うれしい・あいさつのサイン' },
-    { id: 'tail_hook',   label: '先だけ曲がっている', w: { amae: 2, play: 2 },            why: 'しっぽの先がクルンと曲がるのは、ごきげんで好奇心があるサイン' },
-    { id: 'tail_slow',   label: 'ゆっくり振る',       w: { alert: 2, relax: 1, play: 1 }, why: 'ゆっくり振るのは、何かを観察したり考えたりしているとき' },
-    { id: 'tail_thrash', label: 'バタバタ激しく振る', w: { angry: 3, alert: 1 },          why: 'しっぽを激しく振るのは、イライラしているサイン' },
-    { id: 'tail_puff',   label: '膨らんでいる',       w: { fear: 3, angry: 2 },           why: 'しっぽが膨らむのは、びっくり・威嚇のサイン' },
-    { id: 'tail_tuck',   label: '足の間に巻き込む',   w: { fear: 4 },                     why: 'しっぽを巻き込むのは、こわくて小さくなりたいサイン' },
-    { id: 'tail_wrap',   label: '体に巻きつけている', w: { relax: 2, alert: 1 },          why: 'しっぽを体に巻きつけるのは、落ち着いて休んでいるとき（寒いときも）' },
+    { id: 'tail_up',     label: 'ピンと立っている',   w: { amae: 3, demand: 1, play: 1 }, why: 'しっぽがピンと立つのは、うれしい・あいさつのサイン' },
+    { id: 'tail_hook',   label: '先だけ曲がっている', w: { play: 3, amae: 2 },            why: 'しっぽの先がクルンと曲がるのは、ごきげんで好奇心があるサイン' },
+    { id: 'tail_slow',   label: 'ゆっくり振る',       w: { alert: 3, play: 1, angry: 1 }, why: 'ゆっくり振るのは、何かを観察したり考えたりしているとき' },
+    { id: 'tail_thrash', label: 'バタバタ激しく振る', w: { angry: 4, alert: 1, amae: -2, relax: -2 },          why: 'しっぽを激しく振るのは、イライラしているサイン' },
+    { id: 'tail_puff',   label: '膨らんでいる',       w: { fear: 4, angry: 2, amae: -2, relax: -2 },           why: 'しっぽが膨らむのは、びっくり・威嚇のサイン' },
+    { id: 'tail_tuck',   label: '足の間に巻き込む',   w: { fear: 4, amae: -1, relax: -2 },                     why: 'しっぽを巻き込むのは、こわくて小さくなりたいサイン' },
+    { id: 'tail_wrap',   label: '体に巻きつけている', w: { relax: 3 },          why: 'しっぽを体に巻きつけるのは、落ち着いて休んでいるとき（寒いときも）' },
   ]},
   { id: 'ear', cls: 'c-ear', title: '👂 耳', multi: false, signs: [
-    { id: 'ear_fwd',    label: '前向き',             w: { play: 2, amae: 1, relax: 1 },  why: '耳が前向きなのは、リラックスして興味を向けているサイン' },
-    { id: 'ear_side',   label: '横に倒れる（イカ耳）', w: { fear: 2, angry: 2, alert: 1 }, why: 'イカ耳は、不安やイライラを感じているサイン' },
-    { id: 'ear_back',   label: '後ろに伏せる',       w: { fear: 3, angry: 2 },           why: '耳を伏せるのは、こわい・身を守りたいサイン' },
-    { id: 'ear_twitch', label: 'ピクピク動く',       w: { alert: 3, play: 1 },           why: '耳がピクピク動くのは、音に集中して警戒しているサイン' },
+    { id: 'ear_fwd',    label: '前向き',             w: { relax: 2, play: 2, amae: 1 },  why: '耳が前向きなのは、リラックスして興味を向けているサイン' },
+    { id: 'ear_side',   label: '横に倒れる（イカ耳）', w: { angry: 2, fear: 2, alert: 1, relax: -1, amae: -1 }, why: 'イカ耳は、不安やイライラを感じているサイン' },
+    { id: 'ear_back',   label: '後ろに伏せる',       w: { fear: 3, angry: 2, relax: -2, amae: -2 },           why: '耳を伏せるのは、こわい・身を守りたいサイン' },
+    { id: 'ear_twitch', label: 'ピクピク動く',       w: { alert: 4, relax: -1 },           why: '耳がピクピク動くのは、音に集中して警戒しているサイン' },
   ]},
   { id: 'eye', cls: 'c-eye', title: '👁️ 目', multi: true, signs: [
-    { id: 'eye_blink',   label: 'ゆっくりまばたき', w: { amae: 3, relax: 2 },          why: 'ゆっくりまばたきは「信頼してるよ」という猫のあいさつ' },
-    { id: 'eye_dilated', label: '瞳孔が大きい',     w: { play: 2, fear: 2, angry: 1 }, why: '瞳孔が大きいのは、興奮しているとき（楽しい・こわい両方）' },
+    { id: 'eye_blink',   label: 'ゆっくりまばたき', w: { relax: 3, amae: 3 },          why: 'ゆっくりまばたきは「信頼してるよ」という猫のあいさつ' },
+    { id: 'eye_dilated', label: '瞳孔が大きい',     w: { play: 3, fear: 2, angry: 1 }, why: '瞳孔が大きいのは、興奮しているとき（楽しい・こわい両方）' },
     { id: 'eye_narrow',  label: '細めている',       w: { relax: 3, amae: 1 },          why: '目を細めるのは、安心して気持ちいいサイン' },
-    { id: 'eye_stare',   label: 'じっと見つめる',   w: { alert: 2, demand: 2, angry: 1 }, why: 'じっと見つめるのは、何かを伝えたい・警戒しているとき' },
+    { id: 'eye_stare',   label: 'じっと見つめる',   w: { alert: 3, demand: 2, angry: 1 }, why: 'じっと見つめるのは、何かを伝えたい・警戒しているとき' },
   ]},
   { id: 'voice', cls: 'c-voice', title: '🎵 鳴き方・声', multi: true, signs: [
-    { id: 'v_short',   label: '短く高い「ニャッ」',  w: { amae: 2, demand: 1 },         why: '短く高い声は、あいさつや軽い呼びかけ' },
-    { id: 'v_long',    label: '長く「ニャーオ」',    w: { demand: 4 },                  why: '長い鳴き声は、ごはんやドアなど「お願い」があるとき' },
+    { id: 'v_short',   label: '短く高い「ニャッ」',  w: { amae: 2, demand: 2 },         why: '短く高い声は、あいさつや軽い呼びかけ' },
+    { id: 'v_long',    label: '長く「ニャーオ」',    w: { demand: 4, amae: 1 },                  why: '長い鳴き声は、ごはんやドアなど「お願い」があるとき' },
     { id: 'v_purr',    label: 'ゴロゴロ',            w: { relax: 3, amae: 2 },          why: 'ゴロゴロは、満足して安心しているサイン（体調が悪いときに出ることも）' },
-    { id: 'v_hiss',    label: 'シャー',              w: { fear: 3, angry: 3 },          why: 'シャーは「近づかないで」という威嚇' },
-    { id: 'v_chatter', label: 'クラッキング（カカカ）', w: { play: 4, alert: 1 },        why: 'カカカは、鳥や虫など獲物を見つけて興奮しているとき' },
-    { id: 'v_growl',   label: '低いうなり',          w: { angry: 4, fear: 1 },          why: '低いうなり声は、強い怒り・警告のサイン' },
+    { id: 'v_hiss',    label: 'シャー',              w: { angry: 4, fear: 3, amae: -3, relax: -3, play: -1 },          why: 'シャーは「近づかないで」という威嚇' },
+    { id: 'v_chatter', label: 'クラッキング（カカカ）', w: { play: 4, alert: 2 },        why: 'カカカは、鳥や虫など獲物を見つけて興奮しているとき' },
+    { id: 'v_growl',   label: '低いうなり',          w: { angry: 5, fear: 1, amae: -3, relax: -3 },          why: '低いうなり声は、強い怒り・警告のサイン' },
   ]},
   { id: 'body', cls: 'c-body', title: '🐾 体・しぐさ', multi: true, signs: [
     { id: 'b_belly', label: 'お腹を見せる',            w: { relax: 3, amae: 2, play: 1 }, why: 'お腹を見せるのは、とても安心しているサイン（触られたいとは限らない）' },
-    { id: 'b_rub',   label: 'スリスリする',            w: { amae: 3, demand: 2 },         why: 'スリスリは、においをつけて「好き」「かまって」と伝えるしぐさ' },
-    { id: 'b_knead', label: 'ふみふみ',                w: { amae: 3, relax: 2 },          why: 'ふみふみは、子猫時代の名残りで甘えて満たされているサイン' },
+    { id: 'b_rub',   label: 'スリスリする',            w: { amae: 3, demand: 3 },         why: 'スリスリは、においをつけて「好き」「かまって」と伝えるしぐさ' },
+    { id: 'b_knead', label: 'ふみふみ',                w: { amae: 4, relax: 2 },          why: 'ふみふみは、子猫時代の名残りで甘えて満たされているサイン' },
     { id: 'b_groom', label: '毛づくろい',              w: { relax: 3 },                   why: '毛づくろいは、落ち着いているとき（気持ちを静めるときにも）' },
-    { id: 'b_arch',  label: '背中を丸めて毛を逆立てる', w: { fear: 3, angry: 3 },          why: '背中を丸めて毛を逆立てるのは、体を大きく見せる威嚇' },
-    { id: 'b_low',   label: '体を低くする',            w: { fear: 3, play: 1, alert: 1 }, why: '体を低くするのは、こわがっているか、狩りの構えのとき' },
+    { id: 'b_arch',  label: '背中を丸めて毛を逆立てる', w: { fear: 3, angry: 3, amae: -2, relax: -2 },          why: '背中を丸めて毛を逆立てるのは、体を大きく見せる威嚇' },
+    { id: 'b_low',   label: '体を低くする',            w: { fear: 3, alert: 1, play: 1, relax: -1 }, why: '体を低くするのは、こわがっているか、狩りの構えのとき' },
   ]},
 ];
 
@@ -108,29 +108,41 @@ function syncButtons() {
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
   $('judgeBtn').disabled = selected.size === 0;
+  $('selCount').textContent = selected.size ? `${selected.size}個えらび中` : '';
   $('hint').style.visibility = selected.size === 0 ? 'visible' : 'hidden';
 }
 
 // ---- 判定 ----
-function judge() {
+// 同点のときの優先順（見逃すと困る気持ちを先に）
+const PRIORITY = ['angry', 'fear', 'alert', 'demand', 'play', 'relax', 'amae'];
+
+function scoreMoods(ids) {
   const scores = {};
   Object.keys(MOODS).forEach(k => { scores[k] = 0; });
-  selected.forEach(id => {
+  ids.forEach(id => {
     const w = SIGN_BY_ID[id].w;
     Object.keys(w).forEach(k => { scores[k] += w[k]; });
   });
+  Object.keys(scores).forEach(k => { if (scores[k] < 0) scores[k] = 0; });
+  return scores;
+}
+
+function judge() {
+  const ids = [...selected];
+  const scores = scoreMoods(ids);
   const total = Object.values(scores).reduce((a, b) => a + b, 0) || 1;
   const ranked = Object.keys(scores)
     .filter(k => scores[k] > 0)
-    .sort((a, b) => scores[b] - scores[a])
+    .sort((a, b) => (scores[b] - scores[a]) || (PRIORITY.indexOf(a) - PRIORITY.indexOf(b)))
     .map(k => ({ key: k, score: scores[k], pct: Math.round(scores[k] / total * 100) }));
+  if (!ranked.length) ranked.push({ key: 'alert', score: 0, pct: 100 });
   const top = ranked[0];
-  const reasons = [...selected]
+  const reasons = ids
     .map(id => SIGN_BY_ID[id])
-    .filter(s => s.w[top.key])
+    .filter(s => (s.w[top.key] || 0) > 0)
     .sort((a, b) => b.w[top.key] - a.w[top.key])
     .map(s => s.why);
-  return { ranked: ranked.slice(0, 3), top, reasons };
+  return { ranked: ranked.slice(0, 3), top, reasons, signs: ids };
 }
 
 const BAR_COLORS = ['linear-gradient(90deg,#f7b8c6,#e98fa5)', 'linear-gradient(90deg,#cbbcef,#a998e0)', 'linear-gradient(90deg,#ade3cc,#7fcdb0)'];
@@ -145,6 +157,7 @@ function showResult(res, save = true) {
       <div class="bar-label"><span>${MOODS[r.key].emoji} ${MOODS[r.key].name}</span><span>${r.pct}%</span></div>
       <div class="bar"><i data-w="${r.pct}" style="background:${BAR_COLORS[i]}"></i></div>
     </div>`).join('');
+  $('resSigns').innerHTML = res.signs.map(id => `<span class="chip">${SIGN_BY_ID[id].label}</span>`).join('');
   $('resReasons').innerHTML = res.reasons.map(t => `<li>${t}</li>`).join('');
   let tip = mood.tip;
   if (selected.has('v_purr') && (selected.has('tail_tuck') || selected.has('b_low') || selected.has('ear_back'))) {
@@ -166,7 +179,7 @@ function loadHistory() {
 }
 function saveHistory(res) {
   const h = loadHistory();
-  h.unshift({ t: Date.now(), mood: res.top.key, pct: res.top.pct, signs: [...selected] });
+  h.unshift({ t: Date.now(), mood: res.top.key, pct: res.top.pct, signs: res.signs });
   localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(0, 5)));
 }
 function renderHistory() {
@@ -190,7 +203,6 @@ function backToSelect() {
 }
 $('judgeBtn').addEventListener('click', () => { if (selected.size) showResult(judge()); });
 $('resetBtn').addEventListener('click', () => { selected.clear(); syncButtons(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
-$('backBtn').addEventListener('click', backToSelect);
 $('againBtn').addEventListener('click', () => { selected.clear(); syncButtons(); backToSelect(); });
 $('clearHistory').addEventListener('click', () => { localStorage.removeItem(HISTORY_KEY); renderHistory(); });
 
@@ -199,5 +211,5 @@ syncButtons();
 renderHistory();
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {}));
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js?v=2', { scope: './' }).catch(() => {}));
 }

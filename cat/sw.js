@@ -1,5 +1,5 @@
-const CACHE = 'cat-mood-v1';
-const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json',
+const CACHE = 'cat-mood-v2';
+const ASSETS = ['./', './index.html', './style.css', './style.css?v=2', './app.js', './app.js?v=2', './manifest.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-192.png', './icons/maskable-512.png',
   './icons/apple-touch-icon.png', './icons/favicon-32.png', './icons/favicon-48.png', './icons/header-cat.jpg'];
 self.addEventListener('install', e => {
