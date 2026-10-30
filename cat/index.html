@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7efe4">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="猫の気持ち">
+<title>猫の気持ち</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <img class="hero" src="icons/header-cat.jpg" alt="" width="96" height="96">
+  <h1>猫の気持ち</h1>
+  <p class="lead">いまの猫ちゃんの様子をえらんでね</p>
+</header>
+
+<main id="selectView">
+  <div id="categories"></div>
+  <div class="actions">
+    <button id="resetBtn" class="btn ghost" type="button">リセット</button>
+    <button id="judgeBtn" class="btn primary" type="button" disabled>気持ちを見る 🐾</button>
+  </div>
+  <p id="hint" class="hint">1つ以上えらぶと「気持ちを見る」が押せます</p>
+
+  <section id="historySec" class="card history" hidden>
+    <h2>🕰️ 履歴</h2>
+    <ul id="historyList"></ul>
+    <button id="clearHistory" class="link" type="button">履歴を消す</button>
+  </section>
+</main>
+
+<main id="resultView" hidden>
+  <section class="card result-main">
+    <div id="resEmoji" class="big-emoji"></div>
+    <h2 id="resMood" class="mood-name"></h2>
+    <div id="resVoice" class="bubble"></div>
+  </section>
+
+  <section class="card">
+    <h3>📊 気持ちの度合い</h3>
+    <div id="resBars"></div>
+  </section>
+
+  <section class="card">
+    <h3>🔍 こう判断したよ</h3>
+    <ul id="resReasons" class="reasons"></ul>
+  </section>
+
+  <section class="card tip">
+    <h3>💡 飼い主さんへのヒント</h3>
+    <p id="resTip"></p>
+  </section>
+
+  <p class="note">※ これは猫のしぐさから気持ちを推測する目安で、診断ではありません。元気がない・食べない・痛がるなど気になる様子が続くときは、動物病院に相談してください。</p>
+
+  <div class="actions">
+    <button id="backBtn" class="btn ghost" type="button">えらび直す</button>
+    <button id="againBtn" class="btn primary" type="button">最初から 🐾</button>
+  </div>
+</main>
+
+<footer class="foot">🐾 🐾 🐾</footer>
+<script src="app.js"></script>
+</body>
+</html>
