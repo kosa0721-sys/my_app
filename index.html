@@ -14,7 +14,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png" />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css?v=5" />
     <title>ゴルフスコア帳</title>
   </head>
   <body>
@@ -104,37 +104,6 @@
               maxlength="200"
             ></textarea>
           </div>
-        </div>
-
-        <div class="course-tabs" role="tablist" aria-label="コースの入れ方">
-          <button type="button" class="course-tab" id="tab-manual" role="tab" aria-selected="true">
-            手入力
-          </button>
-          <button type="button" class="course-tab" id="tab-course" role="tab" aria-selected="false">
-            コース選択
-          </button>
-        </div>
-        <p class="course-banner" id="course-name-banner" hidden></p>
-        <div class="course-panel" id="course-panel" hidden>
-          <div class="field">
-            <label for="course-query">コース名</label>
-            <input
-              id="course-query"
-              type="search"
-              placeholder="例: 川奈、御殿場"
-              autocomplete="off"
-              enterkeyhint="search"
-            />
-          </div>
-          <p class="course-status" id="course-status"></p>
-          <div id="course-results"></div>
-          <div id="course-picker" hidden></div>
-          <div id="course-chosen" hidden></div>
-          <p class="course-credit">
-            スコアカードは
-            <a href="https://www.golfcore.org/" target="_blank" rel="noopener noreferrer">GolfCore</a>
-            の公開データ（OpenStreetMap 由来）です。見つからない場合は手入力になります。
-          </p>
         </div>
 
         <h2 class="section-title" id="hole-section-title">各ホール（PARと打数）</h2>
@@ -233,8 +202,7 @@
       </div>
     </div>
 
-    <script src="course.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=5"></script>
     <script>
       if ("serviceWorker" in navigator) {
         let refreshing = false;

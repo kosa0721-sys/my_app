@@ -1,12 +1,11 @@
 /* Minimal service worker for PWA installability.
-   Cache version bumped so installed PWAs pick up course search. */
-const CACHE_NAME = "golf-score-v4";
+   v5: course search (GolfCore) removed. Only same-origin app files are cached. */
+const CACHE_NAME = "golf-score-v5";
 const ASSETS = [
   "./",
   "./index.html",
   "./style.css",
   "./app.js",
-  "./course.js",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
@@ -57,7 +56,7 @@ self.addEventListener("fetch", (event) => {
         }
         return res;
       } catch (err) {
-        const cached = await caches.match(req);
+        const cached = await caches.match(req, { ignoreSearch: true });
         if (cached) return cached;
         if (req.mode === "navigate") {
           const fallback = (await caches.match("./index.html")) || (await caches.match("./"));
